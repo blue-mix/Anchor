@@ -87,6 +87,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
             ServerTypeFilter.MEDIA_SERVERS -> devices.filter {
                 it.serverType == ServerType.ANCHOR || it.serverType == ServerType.DLNA_MEDIA_SERVER
             }
+
             ServerTypeFilter.RENDERERS -> devices.filter { it.serverType == ServerType.DLNA_RENDERER }
         }
     }

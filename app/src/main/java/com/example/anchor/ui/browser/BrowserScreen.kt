@@ -29,8 +29,8 @@ import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material.icons.rounded.VideoFile
+import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -145,21 +145,25 @@ fun RemoteBrowserScreen(
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
+
                 uiState.errorMessage != null -> {
                     ErrorState(
                         message = uiState.errorMessage!!,
                         onRetry = { viewModel.refresh() }
                     )
                 }
+
                 uiState.currentPath.isEmpty() && uiState.directories.isNotEmpty() -> {
                     DirectorySelector(
                         directories = uiState.directories,
                         onDirectorySelected = { viewModel.browsePath(it.path) }
                     )
                 }
+
                 uiState.files.isEmpty() -> {
                     EmptyState()
                 }
+
                 else -> {
                     when (uiState.viewMode) {
                         ViewMode.LIST -> FileListView(
@@ -169,6 +173,7 @@ fun RemoteBrowserScreen(
                             },
                             getThumbnailUrl = { viewModel.getThumbnailUrl(it) }
                         )
+
                         ViewMode.GRID -> FileGridView(
                             files = uiState.files,
                             onFileClick = { file ->

@@ -254,13 +254,21 @@ class ContentDirectoryService(
         requestedCount: Int,
         sortCriteria: String
     ): BrowseResult {
-        Log.d(TAG, "Browse: objectId='$objectId', flag=$browseFlag, start=$startingIndex, count=$requestedCount")
+        Log.d(
+            TAG,
+            "Browse: objectId='$objectId', flag=$browseFlag, start=$startingIndex, count=$requestedCount"
+        )
         Log.d(TAG, "Shared directories: ${sharedDirectories.keys}")
 
         return try {
             when {
                 objectId == "0" -> browseRoot(startingIndex, requestedCount)
-                objectId.startsWith("dir:") -> browseDirectory(objectId, startingIndex, requestedCount)
+                objectId.startsWith("dir:") -> browseDirectory(
+                    objectId,
+                    startingIndex,
+                    requestedCount
+                )
+
                 else -> {
                     Log.w(TAG, "Unknown objectId: $objectId")
                     BrowseResult(wrapDidl(""), 0, 0, systemUpdateId)
@@ -290,12 +298,14 @@ class ContentDirectoryService(
 
             Log.d(TAG, "Adding root container: $alias -> ${dir.name}, children: $childCount")
 
-            items.append(buildContainerDidl(
-                id = "dir:$alias",
-                parentId = "0",
-                title = dir.name,
-                childCount = childCount
-            ))
+            items.append(
+                buildContainerDidl(
+                    id = "dir:$alias",
+                    parentId = "0",
+                    title = dir.name,
+                    childCount = childCount
+                )
+            )
         }
 
         val didl = wrapDidl(items.toString())
@@ -307,7 +317,11 @@ class ContentDirectoryService(
     /**
      * Browses a specific directory.
      */
-    private fun browseDirectory(objectId: String, startingIndex: Int, requestedCount: Int): BrowseResult {
+    private fun browseDirectory(
+        objectId: String,
+        startingIndex: Int,
+        requestedCount: Int
+    ): BrowseResult {
         val path = objectId.removePrefix("dir:")
         val parts = path.split("/", limit = 2)
         val alias = parts[0]
@@ -346,12 +360,14 @@ class ContentDirectoryService(
 
             if (file.isDirectory) {
                 val childCount = file.listFiles()?.filter { !it.isHidden }?.size ?: 0
-                items.append(buildContainerDidl(
-                    id = itemId,
-                    parentId = objectId,
-                    title = file.name,
-                    childCount = childCount
-                ))
+                items.append(
+                    buildContainerDidl(
+                        id = itemId,
+                        parentId = objectId,
+                        title = file.name,
+                        childCount = childCount
+                    )
+                )
             } else {
                 val mimeType = MimeTypeUtils.getMimeType(file.name)
                 val mediaClass = when {
@@ -369,15 +385,17 @@ class ContentDirectoryService(
 
                 Log.d(TAG, "Adding item: ${file.name} -> $fileUrl")
 
-                items.append(buildItemDidl(
-                    id = itemId,
-                    parentId = objectId,
-                    title = file.nameWithoutExtension,
-                    mediaClass = mediaClass,
-                    mimeType = mimeType,
-                    url = fileUrl,
-                    size = file.length()
-                ))
+                items.append(
+                    buildItemDidl(
+                        id = itemId,
+                        parentId = objectId,
+                        title = file.nameWithoutExtension,
+                        mediaClass = mediaClass,
+                        mimeType = mimeType,
+                        url = fileUrl,
+                        size = file.length()
+                    )
+                )
             }
         }
 

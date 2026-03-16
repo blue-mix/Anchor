@@ -5,7 +5,6 @@ package com.example.anchor.server
 import android.content.Context
 import android.os.Build
 import com.example.anchor.core.util.NetworkUtils
-import java.util.UUID
 
 /**
  * Generates UPnP/DLNA XML description documents.

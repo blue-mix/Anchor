@@ -77,20 +77,28 @@ fun OnboardingScreen(
                 OnboardingStep.WELCOME -> WelcomeStep(
                     onContinue = { viewModel.moveToNextStep() }
                 )
+
                 OnboardingStep.MEDIA_PERMISSIONS -> MediaPermissionsStep(
                     onPermissionsResult = { granted -> viewModel.onMediaPermissionsResult(granted) },
                     onSkip = { viewModel.moveToNextStep() }
                 )
+
                 OnboardingStep.NOTIFICATION_PERMISSION -> NotificationPermissionStep(
-                    onPermissionResult = { granted -> viewModel.onNotificationPermissionResult(granted) },
+                    onPermissionResult = { granted ->
+                        viewModel.onNotificationPermissionResult(
+                            granted
+                        )
+                    },
                     onSkip = { viewModel.moveToNextStep() }
                 )
+
                 OnboardingStep.NETWORK_CHECK -> NetworkCheckStep(
                     isConnected = uiState.isConnectedToWifi,
                     ipAddress = uiState.localIpAddress,
                     onRefresh = { viewModel.refreshNetworkState() },
                     onContinue = { viewModel.moveToNextStep() }
                 )
+
                 OnboardingStep.COMPLETE -> CompleteStep(
                     onFinish = { viewModel.skipToComplete() }
                 )

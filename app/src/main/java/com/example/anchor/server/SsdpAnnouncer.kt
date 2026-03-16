@@ -607,7 +607,10 @@ class SsdpAnnouncer(
             val packet = DatagramPacket(data, data.size, targetAddress, targetPort)
 
             socket.send(packet)
-            Log.d(TAG, "Sent M-SEARCH response for $searchTarget to ${targetAddress.hostAddress}:$targetPort")
+            Log.d(
+                TAG,
+                "Sent M-SEARCH response for $searchTarget to ${targetAddress.hostAddress}:$targetPort"
+            )
 
         } catch (e: Exception) {
             Log.w(TAG, "Failed to send M-SEARCH response", e)
@@ -626,10 +629,13 @@ class SsdpAnnouncer(
         return buildString {
             appendLine("HTTP/1.1 200 OK")
             appendLine("CACHE-CONTROL: max-age=$CACHE_MAX_AGE")
-            appendLine("DATE: ${
-                SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US).format(
-                    Date()
-                )}")
+            appendLine(
+                "DATE: ${
+                    SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US).format(
+                        Date()
+                    )
+                }"
+            )
             appendLine("EXT:")
             appendLine("LOCATION: http://$localIp:$serverPort/dlna/device.xml")
             appendLine("SERVER: Android/${Build.VERSION.RELEASE} UPnP/1.1 Anchor/1.0")

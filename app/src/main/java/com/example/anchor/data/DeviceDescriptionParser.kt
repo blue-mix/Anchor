@@ -44,6 +44,7 @@ object DeviceDescriptionParser {
                     XmlPullParser.START_TAG -> {
                         currentTag = parser.name
                     }
+
                     XmlPullParser.TEXT -> {
                         val text = parser.text?.trim() ?: ""
                         if (text.isNotEmpty()) {
@@ -58,6 +59,7 @@ object DeviceDescriptionParser {
                             }
                         }
                     }
+
                     XmlPullParser.END_TAG -> {
                         currentTag = ""
                     }

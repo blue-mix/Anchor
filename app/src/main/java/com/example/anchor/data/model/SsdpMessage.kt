@@ -45,7 +45,11 @@ data class SsdpMessage(
         return when {
             searchTarget.contains("anchor", ignoreCase = true) -> ServerType.ANCHOR
             searchTarget.contains("MediaServer", ignoreCase = true) -> ServerType.DLNA_MEDIA_SERVER
-            searchTarget.contains("ContentDirectory", ignoreCase = true) -> ServerType.DLNA_MEDIA_SERVER
+            searchTarget.contains(
+                "ContentDirectory",
+                ignoreCase = true
+            ) -> ServerType.DLNA_MEDIA_SERVER
+
             searchTarget.contains("MediaRenderer", ignoreCase = true) -> ServerType.DLNA_RENDERER
             searchTarget.contains("AVTransport", ignoreCase = true) -> ServerType.DLNA_RENDERER
             else -> ServerType.UNKNOWN

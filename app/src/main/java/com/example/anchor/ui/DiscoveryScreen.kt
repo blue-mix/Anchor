@@ -103,7 +103,7 @@ fun DiscoveryScreen(
                 }
             )
         }
-    ){ paddingValues ->
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()

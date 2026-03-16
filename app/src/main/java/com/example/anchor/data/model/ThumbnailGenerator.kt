@@ -116,7 +116,8 @@ class ThumbnailGenerator(private val context: Context) {
             retriever.setDataSource(filePath)
 
             // Get duration and seek to 10% position
-            val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            val durationStr =
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
             val duration = durationStr?.toLongOrNull() ?: 0L
             val seekPosition = (duration * 0.1).toLong() * 1000 // Convert to microseconds
 

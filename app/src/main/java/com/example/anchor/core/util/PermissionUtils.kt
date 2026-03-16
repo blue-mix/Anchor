@@ -51,7 +51,10 @@ object PermissionUtils {
      */
     fun areAllPermissionsGranted(context: Context): Boolean {
         return getAllRequiredPermissions().all { permission ->
-            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(
+                context,
+                permission
+            ) == PackageManager.PERMISSION_GRANTED
         }
     }
 
@@ -60,7 +63,10 @@ object PermissionUtils {
      */
     fun areMediaPermissionsGranted(context: Context): Boolean {
         return getRequiredMediaPermissions().all { permission ->
-            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(
+                context,
+                permission
+            ) == PackageManager.PERMISSION_GRANTED
         }
     }
 
@@ -69,7 +75,10 @@ object PermissionUtils {
      */
     fun isNotificationPermissionGranted(context: Context): Boolean {
         val permission = getNotificationPermission() ?: return true
-        return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+        return ContextCompat.checkSelfPermission(
+            context,
+            permission
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     /**
@@ -77,7 +86,10 @@ object PermissionUtils {
      */
     fun getMissingPermissions(context: Context): List<String> {
         return getAllRequiredPermissions().filter { permission ->
-            ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(
+                context,
+                permission
+            ) != PackageManager.PERMISSION_GRANTED
         }
     }
 }

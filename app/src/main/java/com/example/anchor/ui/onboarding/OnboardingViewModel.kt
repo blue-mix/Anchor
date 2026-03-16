@@ -42,7 +42,9 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
         _uiState.update { state ->
             state.copy(
                 mediaPermissionsGranted = PermissionUtils.areMediaPermissionsGranted(context),
-                notificationPermissionGranted = PermissionUtils.isNotificationPermissionGranted(context),
+                notificationPermissionGranted = PermissionUtils.isNotificationPermissionGranted(
+                    context
+                ),
                 isConnectedToWifi = NetworkUtils.isConnectedToWifi(context),
                 localIpAddress = NetworkUtils.getLocalIpAddress(context)
             )

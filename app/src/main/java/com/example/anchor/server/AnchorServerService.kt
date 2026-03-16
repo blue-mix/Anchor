@@ -443,10 +443,12 @@ class AnchorServerService : Service() {
                 startForegroundWithNotification()
                 startServer()
             }
+
             ACTION_STOP_SERVER -> {
                 stopServer()
                 stopSelf()
             }
+
             else -> {
                 startForegroundWithNotification()
             }
@@ -514,7 +516,8 @@ class AnchorServerService : Service() {
 
     private fun updateNotification() {
         val notification = createNotification()
-        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val notificationManager =
+            getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
 

@@ -12,12 +12,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.navigation.compose.rememberNavController
 import com.example.anchor.core.util.PermissionUtils
 import com.example.anchor.ui.components.AnchorNavHost
 import com.example.anchor.ui.components.NavigationRoutes
 import com.example.anchor.ui.onboarding.OnboardingScreen
 import com.example.anchor.ui.theme.AnchorTheme
-import androidx.navigation.compose.rememberNavController
 
 
 class MainActivity : ComponentActivity() {

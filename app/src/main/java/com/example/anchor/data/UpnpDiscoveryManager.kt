@@ -4,6 +4,10 @@ package com.example.anchor.data
 
 import android.content.Context
 import android.util.Log
+import com.example.anchor.core.util.MulticastLockManager
+import com.example.anchor.data.model.DiscoveredDevice
+import com.example.anchor.data.model.ServerType
+import com.example.anchor.data.model.SsdpMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,10 +30,6 @@ import java.net.MulticastSocket
 import java.net.NetworkInterface
 import java.net.SocketTimeoutException
 import java.net.URL
-import com.example.anchor.data.model.DiscoveredDevice
-import com.example.anchor.data.model.SsdpMessage
-import com.example.anchor.core.util.MulticastLockManager
-import com.example.anchor.data.model.ServerType
 
 /**
  * Manages UPnP/SSDP device discovery on the local network.
@@ -63,7 +63,8 @@ class UpnpDiscoveryManager(
 
     // Discovery state
     private val _discoveredDevices = MutableStateFlow<Map<String, DiscoveredDevice>>(emptyMap())
-    val discoveredDevices: StateFlow<Map<String, DiscoveredDevice>> = _discoveredDevices.asStateFlow()
+    val discoveredDevices: StateFlow<Map<String, DiscoveredDevice>> =
+        _discoveredDevices.asStateFlow()
 
     private val _isScanning = MutableStateFlow(false)
     val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
