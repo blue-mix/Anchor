@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Anchor</string>
+
+    <!-- Notification strings -->
+    <string name="notification_server_title">Anchor Media Server</string>
+    <string name="notification_server_running">Serving at %1$s</string>
+    <string name="notification_server_starting">Starting server…</string>
+    <string name="notification_action_stop">Stop Server</string>
+
+    <!-- Server status -->
+    <string name="server_status_running">Running</string>
+    <string name="server_status_stopped">Stopped</string>
+    <string name="server_status_starting">Starting…</string>
+    <string name="server_status_error">Error</string>
+</resources>
