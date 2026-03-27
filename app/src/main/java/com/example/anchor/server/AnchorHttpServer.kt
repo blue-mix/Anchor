@@ -95,26 +95,6 @@ class AnchorHttpServer(
         sharedDirectories.remove(alias)
         syncContentDirectory()  // Add this line
     }
-//    /**
-//     * Adds a directory to be shared.
-//     * @param alias The URL path alias (e.g., "videos" -> /browse/videos/...)
-//     * @param directory The actual filesystem directory
-//     */
-//    fun addSharedDirectory(alias: String, directory: File) {
-//        if (directory.exists() && directory.isDirectory) {
-//            sharedDirectories[alias] = directory
-//            Log.d(TAG, "Added shared directory: $alias -> ${directory.absolutePath}")
-//        } else {
-//            Log.w(TAG, "Invalid directory: ${directory.absolutePath}")
-//        }
-//    }
-//
-//    /**
-//     * Removes a shared directory.
-//     */
-//    fun removeSharedDirectory(alias: String) {
-//        sharedDirectories.remove(alias)
-//    }
 
     /**
      * Clears all shared directories.
@@ -154,19 +134,6 @@ class AnchorHttpServer(
         Log.d(TAG, "Server started on port $port")
         AnchorServiceState.addLog("HTTP server started on port $port")
     }
-//    fun start() {
-//        if (server != null) {
-//            Log.w(TAG, "Server already running")
-//            return
-//        }
-//
-//        server = embeddedServer(Netty, port = port) {
-//            configureServer()
-//        }.start(wait = false)
-//
-//        Log.d(TAG, "Server started on port $port")
-//        AnchorServiceState.addLog("HTTP server started on port $port")
-//    }
 
     /**
      * Stops the HTTP server.
@@ -186,12 +153,6 @@ class AnchorHttpServer(
         Log.d(TAG, "Server stopped")
         AnchorServiceState.addLog("HTTP server stopped")
     }
-//    fun stop() {
-//        server?.stop(1000, 2000)
-//        server = null
-//        Log.d(TAG, "Server stopped")
-//        AnchorServiceState.addLog("HTTP server stopped")
-//    }
 
     /**
      * Checks if the server is running.
