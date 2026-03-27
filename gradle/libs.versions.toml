@@ -1,180 +1,40 @@
-#[versions]
-#agp = "9.0.1"
-#coreKtx = "1.18.0"
-#junit = "4.13.2"
-#junitVersion = "1.3.0"
-#espressoCore = "3.7.0"
-#lifecycleRuntimeKtx = "2.10.0"
-#activityCompose = "1.13.0"
-#kotlin = "2.0.21"
-#composeBom = "2024.09.00"
-#
-#[libraries]
-#androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
-#junit = { group = "junit", name = "junit", version.ref = "junit" }
-#androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
-#androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
-#androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
-#androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
-#androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
-#androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
-#androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
-#androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
-#androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
-#androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
-#androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
-#androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
-#
-#[plugins]
-#android-application = { id = "com.android.application", version.ref = "agp" }
-#kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-##
-
-
-#[versions]
-## Core Android
-#agp = "9.0.1"
-#kotlin = "2.0.21"
-#coreKtx = "1.18.0"
-#lifecycleRuntimeKtx = "2.10.0"
-#activityCompose = "1.13.0"
-#ksp = "2.0.21-1.0.25"
-## Compose
-#composeBom = "2026.03.00"
-#composeCompiler = "1.5.1"
-## Remove hilt, ksp, and hiltNavigationCompose
-#koin = "3.5.6" # Standard stable Koin version for Compose
-## Ktor Server
-#ktor = "2.3.12"
-#
-## Coroutines
-#coroutines = "1.8.1"
-#
-## Glide
-#glide = "4.16.0"
-#
-## Gson
-#gson = "2.10.1"
-#
-## WorkManager
-#work = "2.9.0"
-#
-## DocumentFile
-#documentfile = "1.0.1"
-#
-## Hilt & DI
-#hilt = "2.52"
-#hiltNavigationCompose = "1.2.0"
-#
-## Testing
-#junit = "4.13.2"
-#junitVersion = "1.1.5"
-#espressoCore = "3.5.1"
-#
-#[libraries]
-## Core Android
-#androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
-#androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
-#androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
-#
-## Compose
-#androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
-#androidx-ui = { group = "androidx.compose.ui", name = "ui" }
-#androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
-#androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
-#androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
-#androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
-#androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
-#androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
-#androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
-#koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compose", version.ref = "koin" }
-## Ktor Server
-#ktor-server-core = { group = "io.ktor", name = "ktor-server-core", version.ref = "ktor" }
-#ktor-server-netty = { group = "io.ktor", name = "ktor-server-netty", version.ref = "ktor" }
-#ktor-server-partial-content = { group = "io.ktor", name = "ktor-server-partial-content", version.ref = "ktor" }
-#ktor-server-cors = { group = "io.ktor", name = "ktor-server-cors", version.ref = "ktor" }
-#ktor-server-content-negotiation = { group = "io.ktor", name = "ktor-server-content-negotiation", version.ref = "ktor" }
-#ktor-serialization-gson = { group = "io.ktor", name = "ktor-serialization-gson", version.ref = "ktor" }
-#kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
-#kotlinx-coroutines-jdk8 = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-jdk8", version.ref = "coroutines" }
-## Coroutines
-#kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
-#
-## Glide
-#glide = { group = "com.github.bumptech.glide", name = "glide", version.ref = "glide" }
-#
-## Gson
-#gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
-#
-## WorkManager
-#androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
-#
-## DocumentFile
-#androidx-documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
-#
-## Hilt
-#hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
-#hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
-#androidx-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hiltNavigationCompose" }
-#
-## Testing
-#junit = { group = "junit", name = "junit", version.ref = "junit" }
-#androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
-#androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
-#
-#[plugins]
-#android-application = { id = "com.android.application", version.ref = "agp" }
-#kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-#hilt-android = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
-## Add the KSP plugin
-#ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
-#
-#[bundles]
-#compose = [
-#    "androidx-ui",
-#    "androidx-ui-graphics",
-#    "androidx-ui-tooling-preview",
-#    "androidx-material3",
-#    "androidx-material-icons-extended"
-#]
-#
-#ktor = [
-#    "ktor-server-core",
-#    "ktor-server-netty",
-#    "ktor-server-partial-content",
-#    "ktor-server-cors",
-#    "ktor-server-content-negotiation",
-#    "ktor-serialization-gson"
-#]
-
 [versions]
 # Core Android / Plugins
 agp = "9.0.1"
 kotlin = "2.0.21"
-coreKtx = "1.18.0"      # Updated for Android 16/15 stability
-lifecycle = "2.10.0"    # Major release with enhanced Compose support
+coreKtx = "1.18.0"
+lifecycle = "2.10.0"
 activityCompose = "1.12.4"
-composeBom = "2026.02.01" # Latest February 2026 BOM
+composeBom = "2026.02.01"
 
 # Architecture / Jetpack
 navigationCompose = "2.9.0"
 coroutines = "1.10.1"
 
 # Ktor (Server/Client)
-ktor = "3.4.1"          # Latest stable Ktor 3.x
+ktor = "3.4.1"
 kotlinxSerialization = "1.8.0"
 
 # Media (Media3 / Coil)
-media3 = "1.6.1"        # Stronger Compose-native support
-coil = "3.0.0"          # Coil 3.0 is the modern stable for Compose Multiplatform/Android
+media3 = "1.6.1"
+coil = "3.0.0"
 
 # Utilities
 zxing = "3.5.3"
-
+koin = "4.0.2"
 # Testing
 junit = "4.13.2"
 junitVersion = "1.2.1"
 espressoCore = "3.6.1"
+
+# Testing
+junitJupiter    = "5.10.2"
+junitPlatform   = "1.10.2"
+mockk           = "1.13.10"
+turbine         = "1.1.0"
+truth           = "1.4.4"
+robolectric     = "4.12.1"
+coroutinesTest  = "1.8.1"
 
 [libraries]
 # Core Android
@@ -233,6 +93,26 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 
+
+
+# Koin
+koin-android          = { group = "io.insert-koin", name = "koin-android",           version.ref = "koin" }
+koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compose",  version.ref = "koin" }
+koin-test             = { group = "io.insert-koin", name = "koin-test",              version.ref = "koin" }
+koin-test-junit5      = { group = "io.insert-koin", name = "koin-test-junit5",       version.ref = "koin" }
+
+# Unit testing
+junit-jupiter         = { group = "org.junit.jupiter", name = "junit-jupiter",        version.ref = "junitJupiter" }
+junit-jupiter-params  = { group = "org.junit.jupiter", name = "junit-jupiter-params", version.ref = "junitJupiter" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version.ref = "junitPlatform" }
+mockk                 = { group = "io.mockk",          name = "mockk",                version.ref = "mockk" }
+turbine               = { group = "app.cash.turbine",  name = "turbine",              version.ref = "turbine" }
+truth                 = { group = "com.google.truth",  name = "truth",                version.ref = "truth" }
+robolectric           = { group = "org.robolectric",   name = "robolectric",          version.ref = "robolectric" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
+
+# Android / integration testing
+mockk-android         = { group = "io.mockk", name = "mockk-android", version.ref = "mockk" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

@@ -1,5 +1,3 @@
-// app/src/main/java/com/example/anchor/ui/screens/browser/RemoteBrowserScreen.kt
-
 package com.example.anchor.ui.browser
 
 import androidx.compose.foundation.clickable
@@ -55,12 +53,24 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
-import com.example.anchor.data.model.MediaFile
-import com.example.anchor.data.model.MediaType
+import com.example.anchor.data.dto.MediaFileDto
+import com.example.anchor.domain.model.MediaType
+import org.koin.androidx.compose.koinViewModel
 
-
+/**
+ * Remote browser screen — navigates a remote Anchor server's file tree.
+ *
+ * Changes from original:
+ *  - [MediaFile] (removed data.model type) → [MediaFileDto] from data.dto.
+ *  - [MediaType] imported from domain.model (enum); [MediaFileDto.mediaType]
+ *    is a String so we parse it with [mediaTypeOf] at call sites.
+ *  - [file.formattedSize] (was a property on the old MediaFile) replaced by
+ *    [MediaFileDto.formattedSize] extension function defined at the bottom of
+ *    this file — keeps the UI helper local and avoids polluting the DTO.
+ *  - [viewModel()] → [koinViewModel()].
+ *  - [handleFileClick] updated to parse the mediaType string before comparing.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RemoteBrowserScreen(
@@ -68,13 +78,11 @@ fun RemoteBrowserScreen(
     baseUrl: String,
     onNavigateBack: () -> Unit,
     onPlayMedia: (url: String, title: String, mimeType: String) -> Unit,
-    viewModel: RemoteBrowserViewModel = viewModel()
+    viewModel: RemoteBrowserViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(baseUrl) {
-        viewModel.initialize(baseUrl)
-    }
+    LaunchedEffect(baseUrl) { viewModel.initialize(baseUrl) }
 
     Scaffold(
         topBar = {
@@ -100,35 +108,23 @@ fun RemoteBrowserScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = {
-                            if (uiState.currentPath.isNotEmpty()) {
-                                viewModel.navigateUp()
-                            } else {
-                                onNavigateBack()
-                            }
+                            if (uiState.currentPath.isNotEmpty()) viewModel.navigateUp()
+                            else onNavigateBack()
                         }
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "Back"
-                        )
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.toggleViewMode() }) {
                         Icon(
-                            imageVector = if (uiState.viewMode == ViewMode.LIST) {
-                                Icons.Rounded.GridView
-                            } else {
-                                Icons.Rounded.ViewList
-                            },
+                            imageVector = if (uiState.viewMode == ViewMode.LIST)
+                                Icons.Rounded.GridView else Icons.Rounded.ViewList,
                             contentDescription = "Toggle View"
                         )
                     }
                     IconButton(onClick = { viewModel.refresh() }) {
-                        Icon(
-                            imageVector = Icons.Rounded.Refresh,
-                            contentDescription = "Refresh"
-                        )
+                        Icon(Icons.Rounded.Refresh, contentDescription = "Refresh")
                     }
                 }
             )
@@ -141,9 +137,7 @@ fun RemoteBrowserScreen(
         ) {
             when {
                 uiState.isLoading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center)
-                    )
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
 
                 uiState.errorMessage != null -> {
@@ -160,25 +154,18 @@ fun RemoteBrowserScreen(
                     )
                 }
 
-                uiState.files.isEmpty() -> {
-                    EmptyState()
-                }
-
+                uiState.files.isEmpty() -> EmptyState()
                 else -> {
                     when (uiState.viewMode) {
                         ViewMode.LIST -> FileListView(
                             files = uiState.files,
-                            onFileClick = { file ->
-                                handleFileClick(file, viewModel, onPlayMedia)
-                            },
+                            onFileClick = { handleFileClick(it, viewModel, onPlayMedia) },
                             getThumbnailUrl = { viewModel.getThumbnailUrl(it) }
                         )
 
                         ViewMode.GRID -> FileGridView(
                             files = uiState.files,
-                            onFileClick = { file ->
-                                handleFileClick(file, viewModel, onPlayMedia)
-                            },
+                            onFileClick = { handleFileClick(it, viewModel, onPlayMedia) },
                             getThumbnailUrl = { viewModel.getThumbnailUrl(it) }
                         )
                     }
@@ -188,17 +175,22 @@ fun RemoteBrowserScreen(
     }
 }
 
+// ── Click handling ────────────────────────────────────────────
+
 private fun handleFileClick(
-    file: MediaFile,
+    file: MediaFileDto,
     viewModel: RemoteBrowserViewModel,
     onPlayMedia: (String, String, String) -> Unit
 ) {
-    if (file.isDirectory) {
-        viewModel.browsePath(file.path)
-    } else if (file.mediaType == MediaType.VIDEO || file.mediaType == MediaType.AUDIO) {
-        onPlayMedia(viewModel.getStreamUrl(file), file.name, file.mimeType)
+    when {
+        file.isDirectory -> viewModel.browsePath(file.path)
+        file.mediaTypeOf() == MediaType.VIDEO ||
+                file.mediaTypeOf() == MediaType.AUDIO ->
+            onPlayMedia(viewModel.getStreamUrl(file), file.name, file.mimeType)
     }
 }
+
+// ── Directory selector ────────────────────────────────────────
 
 @Composable
 private fun DirectorySelector(
@@ -216,7 +208,6 @@ private fun DirectorySelector(
                 modifier = Modifier.padding(bottom = 8.dp)
             )
         }
-
         items(directories) { directory ->
             Card(
                 modifier = Modifier
@@ -235,16 +226,11 @@ private fun DirectorySelector(
                         modifier = Modifier.size(40.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
-
                     Spacer(modifier = Modifier.width(16.dp))
-
                     Column {
+                        Text(directory.name, style = MaterialTheme.typography.titleMedium)
                         Text(
-                            text = directory.name,
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            text = directory.alias,
+                            directory.alias,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -255,11 +241,13 @@ private fun DirectorySelector(
     }
 }
 
+// ── List view ─────────────────────────────────────────────────
+
 @Composable
 private fun FileListView(
-    files: List<MediaFile>,
-    onFileClick: (MediaFile) -> Unit,
-    getThumbnailUrl: (MediaFile) -> String
+    files: List<MediaFileDto>,
+    onFileClick: (MediaFileDto) -> Unit,
+    getThumbnailUrl: (MediaFileDto) -> String
 ) {
     LazyColumn {
         items(files, key = { it.path }) { file ->
@@ -275,10 +263,11 @@ private fun FileListView(
 
 @Composable
 private fun FileListItem(
-    file: MediaFile,
+    file: MediaFileDto,
     thumbnailUrl: String,
     onClick: () -> Unit
 ) {
+    val mediaType = file.mediaTypeOf()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -286,30 +275,29 @@ private fun FileListItem(
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Thumbnail or icon
         Box(
             modifier = Modifier
                 .size(48.dp)
                 .clip(MaterialTheme.shapes.small),
             contentAlignment = Alignment.Center
         ) {
-            if (file.isDirectory) {
-                Icon(
+            when {
+                file.isDirectory -> Icon(
                     imageVector = Icons.Rounded.Folder,
                     contentDescription = null,
                     modifier = Modifier.size(40.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
-            } else if (file.mediaType == MediaType.VIDEO || file.mediaType == MediaType.IMAGE) {
-                AsyncImage(
+
+                mediaType == MediaType.VIDEO || mediaType == MediaType.IMAGE -> AsyncImage(
                     model = thumbnailUrl,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
-            } else {
-                Icon(
-                    imageVector = getFileIcon(file.mediaType),
+
+                else -> Icon(
+                    imageVector = getFileIcon(mediaType),
                     contentDescription = null,
                     modifier = Modifier.size(32.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -326,10 +314,9 @@ private fun FileListItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-
             if (!file.isDirectory) {
                 Text(
-                    text = file.formattedSize,
+                    text = file.formattedSize(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -338,11 +325,13 @@ private fun FileListItem(
     }
 }
 
+// ── Grid view ─────────────────────────────────────────────────
+
 @Composable
 private fun FileGridView(
-    files: List<MediaFile>,
-    onFileClick: (MediaFile) -> Unit,
-    getThumbnailUrl: (MediaFile) -> String
+    files: List<MediaFileDto>,
+    onFileClick: (MediaFileDto) -> Unit,
+    getThumbnailUrl: (MediaFileDto) -> String
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 150.dp),
@@ -362,10 +351,11 @@ private fun FileGridView(
 
 @Composable
 private fun FileGridItem(
-    file: MediaFile,
+    file: MediaFileDto,
     thumbnailUrl: String,
     onClick: () -> Unit
 ) {
+    val mediaType = file.mediaTypeOf()
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -379,30 +369,29 @@ private fun FileGridItem(
                     .aspectRatio(16f / 9f),
                 contentAlignment = Alignment.Center
             ) {
-                if (file.isDirectory) {
-                    Icon(
+                when {
+                    file.isDirectory -> Icon(
                         imageVector = Icons.Rounded.Folder,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
-                } else if (file.mediaType == MediaType.VIDEO || file.mediaType == MediaType.IMAGE) {
-                    AsyncImage(
+
+                    mediaType == MediaType.VIDEO || mediaType == MediaType.IMAGE -> AsyncImage(
                         model = thumbnailUrl,
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
-                } else {
-                    Icon(
-                        imageVector = getFileIcon(file.mediaType),
+
+                    else -> Icon(
+                        imageVector = getFileIcon(mediaType),
                         contentDescription = null,
                         modifier = Modifier.size(40.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-
             Column(modifier = Modifier.padding(8.dp)) {
                 Text(
                     text = file.name,
@@ -410,10 +399,9 @@ private fun FileGridItem(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-
                 if (!file.isDirectory) {
                     Text(
-                        text = file.formattedSize,
+                        text = file.formattedSize(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -423,11 +411,10 @@ private fun FileGridItem(
     }
 }
 
+// ── Empty / error states ──────────────────────────────────────
+
 @Composable
-private fun ErrorState(
-    message: String,
-    onRetry: () -> Unit
-) {
+private fun ErrorState(message: String, onRetry: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -435,60 +422,59 @@ private fun ErrorState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            text = "Something went wrong",
-            style = MaterialTheme.typography.titleMedium
-        )
-
+        Text("Something went wrong", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
-
         Text(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
-
         Spacer(modifier = Modifier.height(16.dp))
-
-        TextButton(onClick = onRetry) {
-            Text("Retry")
-        }
+        TextButton(onClick = onRetry) { Text("Retry") }
     }
 }
 
 @Composable
 private fun EmptyState() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 imageVector = Icons.Rounded.Folder,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "This folder is empty",
-                style = MaterialTheme.typography.titleMedium
-            )
+            Text("This folder is empty", style = MaterialTheme.typography.titleMedium)
         }
     }
 }
 
-private fun getFileIcon(mediaType: MediaType): ImageVector {
-    return when (mediaType) {
-        MediaType.VIDEO -> Icons.Rounded.VideoFile
-        MediaType.AUDIO -> Icons.Rounded.AudioFile
-        MediaType.IMAGE -> Icons.Rounded.Image
-        MediaType.DOCUMENT -> Icons.Rounded.InsertDriveFile
-        MediaType.UNKNOWN -> Icons.Rounded.InsertDriveFile
-    }
+// ── Helpers ───────────────────────────────────────────────────
+
+private fun getFileIcon(mediaType: MediaType): ImageVector = when (mediaType) {
+    MediaType.VIDEO -> Icons.Rounded.VideoFile
+    MediaType.AUDIO -> Icons.Rounded.AudioFile
+    MediaType.IMAGE -> Icons.Rounded.Image
+    MediaType.DOCUMENT -> Icons.Rounded.InsertDriveFile
+    MediaType.UNKNOWN -> Icons.Rounded.InsertDriveFile
+}
+
+/**
+ * Parses the [MediaFileDto.mediaType] string to the domain [MediaType] enum.
+ * Falls back to [MediaType.UNKNOWN] for any unrecognised value.
+ */
+private fun MediaFileDto.mediaTypeOf(): MediaType =
+    runCatching { MediaType.valueOf(mediaType.uppercase()) }.getOrDefault(MediaType.UNKNOWN)
+
+/**
+ * Human-readable file size for display — mirrors the property on domain [MediaItem]
+ * but kept here as a local extension so the DTO stays annotation-only.
+ */
+private fun MediaFileDto.formattedSize(): String = when {
+    size < 1_024L -> "$size B"
+    size < 1_048_576L -> "%.1f KB".format(size / 1_024.0)
+    size < 1_073_741_824L -> "%.1f MB".format(size / 1_048_576.0)
+    else -> "%.2f GB".format(size / 1_073_741_824.0)
 }

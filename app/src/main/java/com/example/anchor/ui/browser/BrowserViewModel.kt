@@ -1,12 +1,9 @@
-// app/src/main/java/com/example/anchor/ui/screens/browser/RemoteBrowserViewModel.kt
-
 package com.example.anchor.ui.browser
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.anchor.data.model.DirectoryListing
-import com.example.anchor.data.model.MediaFile
-
+import com.example.anchor.data.dto.DirectoryListingDto
+import com.example.anchor.data.dto.MediaFileDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +18,7 @@ data class RemoteBrowserUiState(
     val isLoading: Boolean = false,
     val currentPath: String = "",
     val parentPath: String? = null,
-    val files: List<MediaFile> = emptyList(),
+    val files: List<MediaFileDto> = emptyList(),
     val directories: List<DirectoryInfo> = emptyList(),
     val errorMessage: String? = null,
     val viewMode: ViewMode = ViewMode.LIST,
@@ -36,6 +33,21 @@ data class DirectoryInfo(
 
 enum class ViewMode { LIST, GRID }
 
+/**
+ * ViewModel for browsing a remote Anchor server's file library.
+ *
+ * Changes from original:
+ *  - [RemoteBrowserUiState.files] now holds [MediaFileDto] (the serialisable
+ *    DTO) instead of the old [MediaFile] / [data.model.MediaFile].
+ *    This ViewModel fetches JSON from a remote server and deserialises it,
+ *    so DTOs are the right type here — domain [MediaItem] is for local logic.
+ *  - [DirectoryListingDto.files] replaces the old [DirectoryListing.files]
+ *    (field was already named "files" in the DTO).
+ *  - No longer uses the removed [data.model.DirectoryListing] or
+ *    [data.model.MediaFile] classes.
+ *  - URL helpers use [MediaFileDto.path] which is already present.
+ *  - No other logic changes.
+ */
 class RemoteBrowserViewModel : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -50,10 +62,11 @@ class RemoteBrowserViewModel : ViewModel() {
         loadDirectories()
     }
 
+    // ── Directory loading ─────────────────────────────────────
+
     private fun loadDirectories() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-
             try {
                 val response = fetchUrl("$baseUrl/api/directories")
                 val directories = json.decodeFromString<List<Map<String, String>>>(response)
@@ -65,17 +78,11 @@ class RemoteBrowserViewModel : ViewModel() {
                         )
                     }
 
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        directories = directories
-                    )
-                }
+                _uiState.update { it.copy(isLoading = false, directories = directories) }
 
-                // Auto-navigate to first directory if only one exists
-                if (directories.size == 1) {
-                    browsePath(directories.first().path)
-                }
+                // Auto-navigate when there is only one shared directory
+                if (directories.size == 1) browsePath(directories.first().path)
+
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -87,14 +94,15 @@ class RemoteBrowserViewModel : ViewModel() {
         }
     }
 
+    // ── Path browsing ─────────────────────────────────────────
+
     fun browsePath(path: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-
             try {
                 val apiPath = path.trimStart('/')
                 val response = fetchUrl("$baseUrl/api/browse/$apiPath")
-                val listing = json.decodeFromString<DirectoryListing>(response)
+                val listing = json.decodeFromString<DirectoryListingDto>(response)
 
                 _uiState.update {
                     it.copy(
@@ -121,15 +129,15 @@ class RemoteBrowserViewModel : ViewModel() {
         if (parentPath != null) {
             browsePath(parentPath)
         } else {
-            // Go back to directory selection
             _uiState.update {
-                it.copy(
-                    currentPath = "",
-                    files = emptyList(),
-                    selectedDirectory = null
-                )
+                it.copy(currentPath = "", files = emptyList(), selectedDirectory = null)
             }
         }
+    }
+
+    fun refresh() {
+        val current = _uiState.value.currentPath
+        if (current.isNotEmpty()) browsePath(current) else loadDirectories()
     }
 
     fun toggleViewMode() {
@@ -138,33 +146,26 @@ class RemoteBrowserViewModel : ViewModel() {
         }
     }
 
-    fun refresh() {
-        val currentPath = _uiState.value.currentPath
-        if (currentPath.isNotEmpty()) {
-            browsePath(currentPath)
-        } else {
-            loadDirectories()
-        }
-    }
+    // ── URL builders ──────────────────────────────────────────
 
-    fun getFileUrl(file: MediaFile): String {
+    fun getFileUrl(file: MediaFileDto): String {
         val filePath = file.path.trimStart('/')
         return "$baseUrl/files/$filePath"
     }
 
-    fun getStreamUrl(file: MediaFile): String {
+    fun getStreamUrl(file: MediaFileDto): String {
         val filePath = file.path.trimStart('/')
         return "$baseUrl/stream/$filePath"
     }
 
-    fun getThumbnailUrl(file: MediaFile): String {
+    fun getThumbnailUrl(file: MediaFileDto): String {
         val filePath = file.path.trimStart('/')
         return "$baseUrl/thumbnail/$filePath"
     }
 
-    private suspend fun fetchUrl(url: String): String {
-        return withContext(Dispatchers.IO) {
-            URL(url).readText()
-        }
+    // ── Network ───────────────────────────────────────────────
+
+    private suspend fun fetchUrl(url: String): String = withContext(Dispatchers.IO) {
+        URL(url).readText()
     }
 }

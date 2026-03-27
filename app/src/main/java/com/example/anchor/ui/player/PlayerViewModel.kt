@@ -1,11 +1,8 @@
-// app/src/main/java/com/example/anchor/ui/screens/player/PlayerViewModel.kt
-
 package com.example.anchor.ui.player
 
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
-import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -15,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import androidx.media3.common.MediaItem as Media3MediaItem
 
 data class PlayerUiState(
     val isPlaying: Boolean = false,
@@ -30,6 +28,15 @@ data class PlayerUiState(
     val aspectRatio: Float = 16f / 9f
 )
 
+/**
+ * ViewModel for the media player screen.
+ *
+ * Changes from original:
+ *  - [androidx.media3.common.MediaItem] aliased to [Media3MediaItem] to avoid
+ *    a name clash with the domain [com.example.anchor.domain.model.MediaItem]
+ *    that will be introduced when this ViewModel is expanded.
+ *  - All logic and ExoPlayer lifecycle management is unchanged.
+ */
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(PlayerUiState())
@@ -39,11 +46,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     val player: ExoPlayer?
         get() = _player
 
+    // ── ExoPlayer listener ────────────────────────────────────
+
     private val playerListener = object : Player.Listener {
+
         override fun onPlaybackStateChanged(playbackState: Int) {
             _uiState.update { state ->
                 state.copy(
-                    isLoading = playbackState == Player.STATE_BUFFERING && state.currentPosition == 0L,
+                    isLoading = playbackState == Player.STATE_BUFFERING &&
+                            state.currentPosition == 0L,
                     isBuffering = playbackState == Player.STATE_BUFFERING,
                     duration = _player?.duration?.takeIf { it > 0 } ?: state.duration
                 )
@@ -56,10 +67,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
         override fun onPlayerError(error: PlaybackException) {
             _uiState.update {
-                it.copy(
-                    errorMessage = "Playback error: ${error.message}",
-                    isLoading = false
-                )
+                it.copy(errorMessage = "Playback error: ${error.message}", isLoading = false)
             }
         }
 
@@ -71,38 +79,34 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    // ── Player lifecycle ──────────────────────────────────────
+
     fun initializePlayer(mediaUrl: String, mediaTitle: String, mimeType: String) {
         if (_player != null) return
 
         val context = getApplication<Application>()
-
         _uiState.update { it.copy(title = mediaTitle, isLoading = true) }
 
-        _player = ExoPlayer.Builder(context)
-            .build()
-            .apply {
-                addListener(playerListener)
+        _player = ExoPlayer.Builder(context).build().apply {
+            addListener(playerListener)
 
-                val mediaItem = MediaItem.Builder()
-                    .setUri(Uri.parse(mediaUrl))
-                    .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setTitle(mediaTitle)
-                            .build()
-                    )
-                    .apply {
-                        // Set MIME type if provided
-                        if (mimeType.isNotEmpty()) {
-                            setMimeType(mimeType)
-                        }
-                    }
-                    .build()
+            val mediaItem = Media3MediaItem.Builder()
+                .setUri(Uri.parse(mediaUrl))
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(mediaTitle)
+                        .build()
+                )
+                .apply { if (mimeType.isNotEmpty()) setMimeType(mimeType) }
+                .build()
 
-                setMediaItem(mediaItem)
-                prepare()
-                playWhenReady = true
-            }
+            setMediaItem(mediaItem)
+            prepare()
+            playWhenReady = true
+        }
     }
+
+    // ── Playback controls ─────────────────────────────────────
 
     fun play() {
         _player?.play()
@@ -113,32 +117,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun togglePlayPause() {
-        _player?.let { player ->
-            if (player.isPlaying) {
-                player.pause()
-            } else {
-                player.play()
-            }
-        }
+        _player?.let { if (it.isPlaying) it.pause() else it.play() }
     }
 
     fun seekTo(position: Long) {
         _player?.seekTo(position)
     }
 
-    fun seekForward(milliseconds: Long = 10000) {
+    fun seekForward(milliseconds: Long = 10_000) {
         _player?.let { player ->
-            val newPosition = (player.currentPosition + milliseconds)
-                .coerceAtMost(player.duration)
-            player.seekTo(newPosition)
+            player.seekTo((player.currentPosition + milliseconds).coerceAtMost(player.duration))
         }
     }
 
-    fun seekBackward(milliseconds: Long = 10000) {
+    fun seekBackward(milliseconds: Long = 10_000) {
         _player?.let { player ->
-            val newPosition = (player.currentPosition - milliseconds)
-                .coerceAtLeast(0)
-            player.seekTo(newPosition)
+            player.seekTo((player.currentPosition - milliseconds).coerceAtLeast(0))
         }
     }
 
@@ -157,6 +151,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
     }
+
+    // ── Controls visibility ───────────────────────────────────
 
     fun toggleControls() {
         _uiState.update { it.copy(showControls = !it.showControls) }
@@ -178,12 +174,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(errorMessage = null) }
     }
 
+    // ── Cleanup ───────────────────────────────────────────────
+
     override fun onCleared() {
         super.onCleared()
-        _player?.let { player ->
-            player.removeListener(playerListener)
-            player.release()
-        }
+        _player?.removeListener(playerListener)
+        _player?.release()
         _player = null
     }
 }

@@ -1,5 +1,3 @@
-// app/src/main/java/com/example/anchor/ui/screens/dashboard/DashboardScreen.kt
-
 package com.example.anchor.ui.dashboard
 
 import android.graphics.Bitmap
@@ -71,30 +69,48 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.anchor.server.LogEntry
-import com.example.anchor.server.LogLevel
+import com.example.anchor.domain.model.ServerStatus
+import com.example.anchor.server.service.LogEntry
+import com.example.anchor.server.service.LogLevel
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import org.koin.androidx.compose.koinViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Dashboard screen — server control, folder management, console logs.
+ *
+ * Changes from original:
+ *  - [LogEntry] and [LogLevel] imported from [server.service] package
+ *    (moved from the old flat [server] package).
+ *  - All references to the old flat [ServerState] fields replaced by
+ *    pattern-matching on [ServerStatus]:
+ *      uiState.serverState.isRunning    → uiState.serverStatus is ServerStatus.Running
+ *      uiState.serverState.serverUrl    → (uiState.serverStatus as? ServerStatus.Running)?.url
+ *      uiState.serverState.localIpAddress → (uiState.serverStatus as? ServerStatus.Running)?.ipAddress
+ *  - [SharedFolder.path] → [SharedFolder.absolutePath].
+ *  - [viewModel()] → [koinViewModel()].
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     onNavigateToDiscovery: () -> Unit,
-    viewModel: DashboardViewModel = viewModel()
+    viewModel: DashboardViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val clipboardManager = LocalClipboardManager.current
 
-    // Folder picker launcher
     val folderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        uri?.let { viewModel.addFolder(it) }
-    }
+    ) { uri -> uri?.let { viewModel.addFolder(it) } }
+
+    // Derive server fields from sealed ServerStatus
+    val isRunning = uiState.serverStatus is ServerStatus.Running
+    val runningState = uiState.serverStatus as? ServerStatus.Running
+    val serverUrl = runningState?.url
+    val ipAddress = runningState?.ipAddress
 
     Scaffold(
         topBar = {
@@ -111,13 +127,8 @@ fun DashboardScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { folderPickerLauncher.launch(null) }
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Add,
-                    contentDescription = "Add Folder"
-                )
+            FloatingActionButton(onClick = { folderPickerLauncher.launch(null) }) {
+                Icon(imageVector = Icons.Rounded.Add, contentDescription = "Add Folder")
             }
         }
     ) { paddingValues ->
@@ -128,35 +139,29 @@ fun DashboardScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Network Status Card
             item {
                 NetworkStatusCard(
                     isConnected = uiState.isConnectedToWifi,
-                    ipAddress = uiState.serverState.localIpAddress,
-                    serverUrl = uiState.serverState.serverUrl
+                    ipAddress = ipAddress,
+                    serverUrl = serverUrl
                 )
             }
-
-            // Server Control Card
             item {
                 ServerControlCard(
-                    isRunning = uiState.serverState.isRunning,
-                    serverUrl = uiState.serverState.serverUrl,
+                    serverStatus = uiState.serverStatus,
+                    isRunning = isRunning,
+                    serverUrl = serverUrl,
                     port = uiState.selectedPort,
                     onPortChange = { viewModel.setPort(it) },
                     onStartServer = { viewModel.startServer() },
                     onStopServer = { viewModel.stopServer() },
                     onShowQrCode = { viewModel.toggleQrCode() },
                     onCopyUrl = {
-                        uiState.serverState.serverUrl?.let {
-                            clipboardManager.setText(AnnotatedString(it))
-                        }
+                        serverUrl?.let { clipboardManager.setText(AnnotatedString(it)) }
                     },
                     hasSharedFolders = uiState.sharedFolders.isNotEmpty()
                 )
             }
-
-            // Shared Folders Section
             item {
                 SharedFoldersSection(
                     folders = uiState.sharedFolders,
@@ -164,8 +169,6 @@ fun DashboardScreen(
                     onRemoveFolder = { viewModel.removeFolder(it) }
                 )
             }
-
-            // Console Logs Section
             item {
                 ConsoleLogsSection(
                     logs = uiState.logs,
@@ -175,14 +178,12 @@ fun DashboardScreen(
         }
     }
 
-    // QR Code Dialog
-    if (uiState.showQrCode && uiState.serverState.serverUrl != null) {
-        QrCodeDialog(
-            url = uiState.serverState.serverUrl!!,
-            onDismiss = { viewModel.toggleQrCode() }
-        )
+    if (uiState.showQrCode && serverUrl != null) {
+        QrCodeDialog(url = serverUrl, onDismiss = { viewModel.toggleQrCode() })
     }
 }
+
+// ── Network status ────────────────────────────────────────────
 
 @Composable
 private fun NetworkStatusCard(
@@ -193,11 +194,10 @@ private fun NetworkStatusCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (isConnected) {
+            containerColor = if (isConnected)
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-            } else {
+            else
                 MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
-            }
         )
     ) {
         Row(
@@ -210,15 +210,10 @@ private fun NetworkStatusCard(
                 imageVector = if (isConnected) Icons.Rounded.Wifi else Icons.Rounded.WifiOff,
                 contentDescription = null,
                 modifier = Modifier.size(32.dp),
-                tint = if (isConnected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.error
-                }
+                tint = if (isConnected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.error
             )
-
             Spacer(modifier = Modifier.width(16.dp))
-
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = if (isConnected) "Connected to Wi-Fi" else "Not Connected",
@@ -236,8 +231,11 @@ private fun NetworkStatusCard(
     }
 }
 
+// ── Server control ────────────────────────────────────────────
+
 @Composable
 private fun ServerControlCard(
+    serverStatus: ServerStatus,
     isRunning: Boolean,
     serverUrl: String?,
     port: Int,
@@ -260,65 +258,48 @@ private fun ServerControlCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(
-                        text = "Media Server",
-                        style = MaterialTheme.typography.titleLarge
-                    )
+                    Text("Media Server", style = MaterialTheme.typography.titleLarge)
                     Text(
                         text = if (isRunning) "Running" else "Stopped",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (isRunning) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
+                        color = if (isRunning) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-
-                // Status indicator
                 Box(
                     modifier = Modifier
                         .size(12.dp)
                         .clip(CircleShape)
                         .background(
-                            if (isRunning) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.outline
-                            }
+                            if (isRunning) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.outline
                         )
                 )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Port configuration (only when stopped)
             AnimatedVisibility(visible = !isRunning) {
                 Column {
                     var portText by remember(port) { mutableStateOf(port.toString()) }
-
                     OutlinedTextField(
                         value = portText,
-                        onValueChange = { value ->
-                            portText = value
-                            value.toIntOrNull()?.let { onPortChange(it) }
+                        onValueChange = { v ->
+                            portText = v
+                            v.toIntOrNull()?.let { onPortChange(it) }
                         },
                         label = { Text("Port") },
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true
                     )
-
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
 
-            // Server URL display (when running)
             AnimatedVisibility(visible = isRunning && serverUrl != null) {
                 Column {
-                    OutlinedCard(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+                    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -331,46 +312,39 @@ private fun ServerControlCard(
                                 fontFamily = FontFamily.Monospace,
                                 modifier = Modifier.weight(1f)
                             )
-
                             IconButton(onClick = onCopyUrl) {
-                                Icon(
-                                    imageVector = Icons.Rounded.ContentCopy,
-                                    contentDescription = "Copy URL"
-                                )
+                                Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy URL")
                             }
-
                             IconButton(onClick = onShowQrCode) {
-                                Icon(
-                                    imageVector = Icons.Rounded.QrCode,
-                                    contentDescription = "Show QR Code"
-                                )
+                                Icon(Icons.Rounded.QrCode, contentDescription = "Show QR Code")
                             }
                         }
                     }
-
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
 
-            // Start/Stop Button
             Button(
                 onClick = { if (isRunning) onStopServer() else onStartServer() },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = isRunning || hasSharedFolders,
-                colors = if (isRunning) {
-                    ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                } else {
+                enabled = serverStatus !is ServerStatus.Starting,
+                colors = if (isRunning)
+                    ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                else
                     ButtonDefaults.buttonColors()
-                }
             ) {
                 Icon(
                     imageVector = if (isRunning) Icons.Rounded.Stop else Icons.Rounded.PlayArrow,
                     contentDescription = null
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = if (isRunning) "Stop Server" else "Start Server")
+                Text(
+                    when (serverStatus) {
+                        is ServerStatus.Starting -> "Starting…"
+                        is ServerStatus.Running -> "Stop Server"
+                        else -> "Start Server"
+                    }
+                )
             }
 
             if (!hasSharedFolders && !isRunning) {
@@ -387,6 +361,8 @@ private fun ServerControlCard(
     }
 }
 
+// ── Shared folders ────────────────────────────────────────────
+
 @Composable
 private fun SharedFoldersSection(
     folders: List<SharedFolder>,
@@ -399,11 +375,7 @@ private fun SharedFoldersSection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Shared Folders",
-                style = MaterialTheme.typography.titleMedium
-            )
-
+            Text("Shared Folders", style = MaterialTheme.typography.titleMedium)
             Text(
                 text = "${folders.size} folders",
                 style = MaterialTheme.typography.bodySmall,
@@ -414,10 +386,7 @@ private fun SharedFoldersSection(
         Spacer(modifier = Modifier.height(12.dp))
 
         if (folders.isEmpty()) {
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onAddFolder
-            ) {
+            OutlinedCard(modifier = Modifier.fillMaxWidth(), onClick = onAddFolder) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -431,26 +400,18 @@ private fun SharedFoldersSection(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))
+                    Text("No folders shared", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        text = "No folders shared",
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    Text(
-                        text = "Tap to add a folder",
+                        "Tap to add a folder",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
         } else {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(folders, key = { it.uri }) { folder ->
-                    FolderCard(
-                        folder = folder,
-                        onRemove = { onRemoveFolder(folder) }
-                    )
+                    FolderCard(folder = folder, onRemove = { onRemoveFolder(folder) })
                 }
             }
         }
@@ -458,16 +419,9 @@ private fun SharedFoldersSection(
 }
 
 @Composable
-private fun FolderCard(
-    folder: SharedFolder,
-    onRemove: () -> Unit
-) {
-    Card(
-        modifier = Modifier.width(160.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp)
-        ) {
+private fun FolderCard(folder: SharedFolder, onRemove: () -> Unit) {
+    Card(modifier = Modifier.width(160.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -479,11 +433,7 @@ private fun FolderCard(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(32.dp)
                 )
-
-                IconButton(
-                    onClick = onRemove,
-                    modifier = Modifier.size(24.dp)
-                ) {
+                IconButton(onClick = onRemove, modifier = Modifier.size(24.dp)) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = "Remove folder",
@@ -491,16 +441,13 @@ private fun FolderCard(
                     )
                 }
             }
-
             Spacer(modifier = Modifier.height(8.dp))
-
             Text(
                 text = folder.name,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-
             Text(
                 text = "${folder.fileCount} files",
                 style = MaterialTheme.typography.bodySmall,
@@ -510,27 +457,19 @@ private fun FolderCard(
     }
 }
 
+// ── Console logs ──────────────────────────────────────────────
+
 @Composable
-private fun ConsoleLogsSection(
-    logs: List<LogEntry>,
-    onClearLogs: () -> Unit
-) {
+private fun ConsoleLogsSection(logs: List<LogEntry>, onClearLogs: () -> Unit) {
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Console",
-                style = MaterialTheme.typography.titleMedium
-            )
-
+            Text("Console", style = MaterialTheme.typography.titleMedium)
             IconButton(onClick = onClearLogs) {
-                Icon(
-                    imageVector = Icons.Rounded.Delete,
-                    contentDescription = "Clear logs"
-                )
+                Icon(Icons.Rounded.Delete, contentDescription = "Clear logs")
             }
         }
 
@@ -545,12 +484,9 @@ private fun ConsoleLogsSection(
             )
         ) {
             if (logs.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = "No logs yet",
+                        "No logs yet",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -561,9 +497,7 @@ private fun ConsoleLogsSection(
                     contentPadding = PaddingValues(8.dp),
                     reverseLayout = true
                 ) {
-                    items(logs.reversed()) { entry ->
-                        LogEntryItem(entry)
-                    }
+                    items(logs.reversed()) { entry -> LogEntryItem(entry) }
                 }
             }
         }
@@ -579,7 +513,6 @@ private fun LogEntryItem(entry: LogEntry) {
         LogLevel.INFO -> MaterialTheme.colorScheme.onSurface
         LogLevel.DEBUG -> MaterialTheme.colorScheme.onSurfaceVariant
     }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -591,9 +524,7 @@ private fun LogEntryItem(entry: LogEntry) {
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-
         Spacer(modifier = Modifier.width(8.dp))
-
         Text(
             text = entry.message,
             style = MaterialTheme.typography.bodySmall,
@@ -604,29 +535,19 @@ private fun LogEntryItem(entry: LogEntry) {
     }
 }
 
-@Composable
-private fun QrCodeDialog(
-    url: String,
-    onDismiss: () -> Unit
-) {
-    val qrBitmap = remember(url) { generateQrCode(url) }
+// ── QR code dialog ────────────────────────────────────────────
 
+@Composable
+private fun QrCodeDialog(url: String, onDismiss: () -> Unit) {
+    val qrBitmap = remember(url) { generateQrCode(url) }
     Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp)
-        ) {
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
             Column(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = "Scan to Connect",
-                    style = MaterialTheme.typography.titleLarge
-                )
-
+                Text("Scan to Connect", style = MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.height(16.dp))
-
                 qrBitmap?.let { bitmap ->
                     Image(
                         bitmap = bitmap.asImageBitmap(),
@@ -634,39 +555,27 @@ private fun QrCodeDialog(
                         modifier = Modifier.size(240.dp)
                     )
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
-
                 Text(
                     text = url,
                     style = MaterialTheme.typography.bodyMedium,
                     fontFamily = FontFamily.Monospace,
                     textAlign = TextAlign.Center
                 )
-
                 Spacer(modifier = Modifier.height(16.dp))
-
-                Button(onClick = onDismiss) {
-                    Text("Close")
-                }
+                Button(onClick = onDismiss) { Text("Close") }
             }
         }
     }
 }
 
-/**
- * Generates a QR code bitmap for the given text.
- */
 private fun generateQrCode(text: String, size: Int = 512): Bitmap? {
     return try {
         val writer = QRCodeWriter()
         val bitMatrix = writer.encode(text, BarcodeFormat.QR_CODE, size, size)
-        val width = bitMatrix.width
-        val height = bitMatrix.height
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-
-        for (x in 0 until width) {
-            for (y in 0 until height) {
+        val bitmap = Bitmap.createBitmap(bitMatrix.width, bitMatrix.height, Bitmap.Config.RGB_565)
+        for (x in 0 until bitMatrix.width) {
+            for (y in 0 until bitMatrix.height) {
                 bitmap.setPixel(x, y, if (bitMatrix[x, y]) Color.BLACK else Color.WHITE)
             }
         }

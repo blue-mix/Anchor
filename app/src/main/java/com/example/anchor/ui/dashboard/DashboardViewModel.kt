@@ -1,18 +1,19 @@
-// app/src/main/java/com/example/anchor/ui/screens/dashboard/DashboardViewModel.kt
-
 package com.example.anchor.ui.dashboard
 
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.anchor.core.util.NetworkUtils
-import com.example.anchor.server.AnchorServerService
-import com.example.anchor.server.AnchorServiceState
-import com.example.anchor.server.LogEntry
-import com.example.anchor.server.ServerState
+import com.example.anchor.domain.model.ServerConfig
+import com.example.anchor.domain.model.ServerStatus
+import com.example.anchor.domain.model.SharedDirectory
+import com.example.anchor.server.service.AnchorServerService
+import com.example.anchor.server.service.AnchorServiceState
+import com.example.anchor.server.service.LogEntry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -21,36 +22,54 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 
 data class DashboardUiState(
-    val serverState: ServerState = ServerState(),
+    val serverStatus: ServerStatus = ServerStatus.Stopped,
     val logs: List<LogEntry> = emptyList(),
     val sharedFolders: List<SharedFolder> = emptyList(),
     val isConnectedToWifi: Boolean = false,
     val showQrCode: Boolean = false,
-    val selectedPort: Int = 8080
+    val selectedPort: Int = ServerConfig.DEFAULT_PORT
 )
 
 data class SharedFolder(
     val uri: String,
     val name: String,
-    val path: String,
+    val absolutePath: String,
     val fileCount: Int = 0
 )
 
+/**
+ * ViewModel for the server dashboard screen.
+ *
+ * Changes from original:
+ *  - [DashboardUiState.serverState] (old flat ServerState) replaced by
+ *    [DashboardUiState.serverStatus] using domain [ServerStatus] sealed interface.
+ *  - [AnchorServiceState.state] (removed) replaced by [AnchorServiceState.status].
+ *  - [LogEntry] imported from [server.service] (where it now lives).
+ *  - [AnchorServerService] imported from [server.service] package.
+ *  - [startServer] builds a proper [ServerConfig] with [SharedDirectory] values
+ *    instead of passing raw path lists.
+ *  - [SharedFolder.path] renamed to [SharedFolder.absolutePath] for clarity.
+ *  - Still extends [AndroidViewModel] — SAF (DocumentFile) requires a Context.
+ */
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
 
+    companion object {
+        private const val TAG = "DashboardViewModel"
+    }
+
     private val _sharedFolders = MutableStateFlow<List<SharedFolder>>(emptyList())
-    private val _selectedPort = MutableStateFlow(8080)
+    private val _selectedPort = MutableStateFlow(ServerConfig.DEFAULT_PORT)
     private val _showQrCode = MutableStateFlow(false)
 
     val uiState: StateFlow<DashboardUiState> = combine(
-        AnchorServiceState.state,
+        AnchorServiceState.status,
         AnchorServiceState.logs,
         _sharedFolders,
         _selectedPort,
         _showQrCode
-    ) { serverState, logs, folders, port, showQr ->
+    ) { status, logs, folders, port, showQr ->
         DashboardUiState(
-            serverState = serverState,
+            serverStatus = status,
             logs = logs,
             sharedFolders = folders,
             isConnectedToWifi = NetworkUtils.isConnectedToWifi(application),
@@ -59,113 +78,116 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         )
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        // Eagerly: the flow never stops collecting even when no UI is subscribed.
+        // This ensures AnchorServiceState.status updates from the background
+        // service thread are never missed between recompositions.
+        started = SharingStarted.Eagerly,
         initialValue = DashboardUiState()
     )
+
+    // ── Folder management ─────────────────────────────────────
 
     fun addFolder(uri: Uri) {
         val context = getApplication<Application>()
 
-        // Take persistable permission
-        try {
+        // Take persistable SAF permission
+        runCatching {
             context.contentResolver.takePersistableUriPermission(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
-        } catch (e: Exception) {
-            // Permission might already be taken
         }
 
-        val documentFile = DocumentFile.fromTreeUri(context, uri)
-        val name = documentFile?.name ?: "Unknown"
-        val path = uri.toString()
-
-        // Count files in directory
-        val fileCount = documentFile?.listFiles()?.count { it.isFile } ?: 0
+        val docFile = DocumentFile.fromTreeUri(context, uri)
+        val name = docFile?.name ?: "Unknown"
+        val path = resolveAbsolutePath(uri.toString()) ?: uri.toString()
+        val fileCount = docFile?.listFiles()?.count { it.isFile } ?: 0
 
         val folder = SharedFolder(
             uri = uri.toString(),
             name = name,
-            path = path,
+            absolutePath = path,
             fileCount = fileCount
         )
 
         _sharedFolders.update { current ->
-            if (current.none { it.uri == folder.uri }) {
-                current + folder
-            } else {
-                current
-            }
+            if (current.none { it.uri == folder.uri }) current + folder else current
         }
     }
 
     fun removeFolder(folder: SharedFolder) {
-        _sharedFolders.update { current ->
-            current.filter { it.uri != folder.uri }
-        }
+        _sharedFolders.update { it.filter { f -> f.uri != folder.uri } }
     }
 
     fun setPort(port: Int) {
-        _selectedPort.value = port.coerceIn(1024, 65535)
+        _selectedPort.value = port.coerceIn(ServerConfig.MIN_PORT, ServerConfig.MAX_PORT)
     }
 
     fun toggleQrCode() {
         _showQrCode.update { !it }
     }
 
+    // ── Server control ────────────────────────────────────────
+
     fun startServer() {
         val context = getApplication<Application>()
+        val port = _selectedPort.value
         val folders = _sharedFolders.value
 
-        // Convert document URIs to file paths where possible
-        val directories = folders.mapNotNull { folder ->
-            try {
-                // For content URIs, we need to work with DocumentFile
-                // The server will need to handle these appropriately
-                getPathFromUri(folder.uri)
-            } catch (e: Exception) {
-                null
+        // Collect every path we can resolve. For SAF URIs where the path
+        // cannot be converted to a filesystem path, we still log it so the
+        // user knows which folders were skipped.
+        val directories = ArrayList<String>()
+        folders.forEach { folder ->
+            val path = resolveAbsolutePath(folder.uri)
+            if (path != null) {
+                directories.add(path)
+                Log.d(TAG, "Resolved folder: ${folder.name} → $path")
+            } else {
+                // SAF URI that cannot be converted — log it but don't block startup
+                Log.w(TAG, "Could not resolve path for ${folder.name} (${folder.uri})")
+                AnchorServiceState.addLog("Warning: cannot resolve path for ${folder.name}")
             }
         }
 
         AnchorServerService.startServer(
             context = context,
-            port = _selectedPort.value,
-            directories = ArrayList(directories)
+            port = port,
+            directories = directories
         )
     }
 
     fun stopServer() {
-        val context = getApplication<Application>()
-        AnchorServerService.stopServer(context)
+        AnchorServerService.stopServer(getApplication())
     }
 
     fun clearLogs() {
         AnchorServiceState.clearLogs()
     }
 
-    private fun getPathFromUri(uriString: String): String? {
+    // ── Helpers ───────────────────────────────────────────────
+
+    /**
+     * Converts a content:// or file:// URI string to an absolute filesystem path.
+     * This is a best-effort approach for the common SAF path format.
+     * Returns null when the path cannot be resolved.
+     */
+    private fun resolveAbsolutePath(uriString: String): String? {
         return try {
             val uri = Uri.parse(uriString)
-
-            // Try to get actual file path for file:// URIs
-            if (uri.scheme == "file") {
-                return uri.path
-            }
-
-            // For content:// URIs, try to resolve path
-            // This is a simplified approach - in production you'd use SAF properly
-            val segments = uri.pathSegments
-            if (segments.isNotEmpty()) {
-                val lastSegment = segments.last()
-                if (lastSegment.contains(":")) {
-                    val path = lastSegment.substringAfter(":")
-                    "/storage/emulated/0/$path"
-                } else {
-                    null
+            when (uri.scheme) {
+                "file" -> uri.path
+                "content" -> {
+                    val segments = uri.pathSegments
+                    if (segments.isNotEmpty()) {
+                        val last = segments.last()
+                        if (last.contains(":")) {
+                            "/storage/emulated/0/${last.substringAfter(":")}"
+                        } else null
+                    } else null
                 }
-            } else {
-                null
+
+                else -> null
             }
         } catch (e: Exception) {
             null

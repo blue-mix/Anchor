@@ -5,91 +5,94 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import com.example.anchor.core.util.PermissionUtils.getAllRequiredPermissions
 
+/**
+ * Centralised permission helpers for Anchor.
+ *
+ * Keeps API-version branching in one place so ViewModels and Activities
+ * never have to repeat the same Build.VERSION_SDK_INT checks.
+ */
 object PermissionUtils {
 
+    // ── Permission lists ──────────────────────────────────────
+
     /**
-     * Returns the list of media permissions required based on Android version.
-     * Android 13+ (API 33): Granular media permissions
-     * Android 12 and below: READ_EXTERNAL_STORAGE
+     * Media permissions, adjusted for the running Android version.
+     *
+     * - API 33+ (Android 13): granular per-media-type permissions
+     * - API 29–32: READ_EXTERNAL_STORAGE
+     * - API < 29:  READ_EXTERNAL_STORAGE (same, broader scope)
      */
-    fun getRequiredMediaPermissions(): List<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            listOf(
-                Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.READ_MEDIA_AUDIO,
-                Manifest.permission.READ_MEDIA_IMAGES
-            )
-        } else {
-            listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
+    fun getRequiredMediaPermissions(): List<String> = when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> listOf(
+            Manifest.permission.READ_MEDIA_VIDEO,
+            Manifest.permission.READ_MEDIA_AUDIO,
+            Manifest.permission.READ_MEDIA_IMAGES
+        )
+
+        else -> listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
 
     /**
-     * Returns notification permission for Android 13+.
+     * POST_NOTIFICATIONS is required from API 33+.
+     * Returns null on older versions — callers should skip requesting it.
      */
-    fun getNotificationPermission(): String? {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    fun getNotificationPermission(): String? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
             Manifest.permission.POST_NOTIFICATIONS
-        } else {
+        else
             null
-        }
-    }
 
     /**
-     * All permissions needed for the app to function.
+     * All permissions needed for full app functionality.
+     * Notification permission is optional; the server still works without it.
      */
-    fun getAllRequiredPermissions(): List<String> {
-        val permissions = mutableListOf<String>()
-        permissions.addAll(getRequiredMediaPermissions())
-        getNotificationPermission()?.let { permissions.add(it) }
-        return permissions
+    fun getAllRequiredPermissions(): List<String> = buildList {
+        addAll(getRequiredMediaPermissions())
+        getNotificationPermission()?.let { add(it) }
     }
 
+    // ── Grant checks ──────────────────────────────────────────
+
     /**
-     * Checks if all required permissions are granted.
+     * Returns true if every permission in [getAllRequiredPermissions] is granted.
+     * Use this to decide whether to show onboarding.
      */
-    fun areAllPermissionsGranted(context: Context): Boolean {
-        return getAllRequiredPermissions().all { permission ->
-            ContextCompat.checkSelfPermission(
-                context,
-                permission
-            ) == PackageManager.PERMISSION_GRANTED
-        }
-    }
+    fun areAllPermissionsGranted(context: Context): Boolean =
+        getAllRequiredPermissions().all { isGranted(context, it) }
 
     /**
-     * Checks if media permissions are granted.
+     * Returns true if all media permissions are granted.
+     * The server can start sharing without notification permission.
      */
-    fun areMediaPermissionsGranted(context: Context): Boolean {
-        return getRequiredMediaPermissions().all { permission ->
-            ContextCompat.checkSelfPermission(
-                context,
-                permission
-            ) == PackageManager.PERMISSION_GRANTED
-        }
-    }
+    fun areMediaPermissionsGranted(context: Context): Boolean =
+        getRequiredMediaPermissions().all { isGranted(context, it) }
 
     /**
-     * Checks if notification permission is granted.
+     * Returns true if the notification permission is granted (or not required).
      */
     fun isNotificationPermissionGranted(context: Context): Boolean {
         val permission = getNotificationPermission() ?: return true
-        return ContextCompat.checkSelfPermission(
-            context,
-            permission
-        ) == PackageManager.PERMISSION_GRANTED
+        return isGranted(context, permission)
     }
 
     /**
-     * Returns list of permissions that are not yet granted.
+     * Returns only the permissions from [getAllRequiredPermissions] that are
+     * not yet granted — ready to pass to [ActivityResultContracts.RequestMultiplePermissions].
      */
-    fun getMissingPermissions(context: Context): List<String> {
-        return getAllRequiredPermissions().filter { permission ->
-            ContextCompat.checkSelfPermission(
-                context,
-                permission
-            ) != PackageManager.PERMISSION_GRANTED
-        }
-    }
+    fun getMissingPermissions(context: Context): List<String> =
+        getAllRequiredPermissions().filter { !isGranted(context, it) }
+
+    /**
+     * Returns only the missing media permissions.
+     */
+    fun getMissingMediaPermissions(context: Context): List<String> =
+        getRequiredMediaPermissions().filter { !isGranted(context, it) }
+
+    // ── Internal helper ───────────────────────────────────────
+
+    private fun isGranted(context: Context, permission: String): Boolean =
+        ContextCompat.checkSelfPermission(context, permission) ==
+                PackageManager.PERMISSION_GRANTED
 }

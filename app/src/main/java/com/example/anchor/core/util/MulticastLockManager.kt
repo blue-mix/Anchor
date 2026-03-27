@@ -7,108 +7,112 @@ import android.util.Log
 /**
  * Manages the Wi-Fi Multicast Lock required for UPnP/SSDP discovery.
  *
- * By default, Android filters out multicast packets to save battery.
- * Acquiring a MulticastLock allows the device to receive SSDP multicast
- * messages (239.255.255.250:1900) used for UPnP device discovery.
+ * Android filters out multicast packets by default to conserve battery.
+ * Acquiring a [WifiManager.MulticastLock] allows the device to receive
+ * SSDP packets on 239.255.255.250:1900 used by UPnP device discovery.
  *
- * IMPORTANT: The lock must be released when not needed to preserve battery.
+ * Usage:
+ *   val manager = MulticastLockManager(context)  // via Koin: single { ... }
+ *   manager.acquire()          // before starting discovery / server
+ *   manager.release()          // when done
+ *   manager.forceRelease()     // in Service.onDestroy()
+ *
+ * Thread-safety: all public methods are synchronized.
  */
 class MulticastLockManager(context: Context) {
 
     companion object {
         private const val TAG = "MulticastLockManager"
         private const val LOCK_TAG = "AnchorMulticastLock"
+        private const val MAX_ACQUIRE_MS = 10L * 60L * 1000L   // 10 minutes
     }
 
     private val wifiManager: WifiManager =
         context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
 
+    @Volatile
     private var multicastLock: WifiManager.MulticastLock? = null
-    private var lockCount = 0
-    private val lock = Any()
+
+    @Volatile
+    private var acquireCount = 0
+    private val mutex = Any()
+
+    // ── Public API ────────────────────────────────────────────
 
     /**
-     * Acquires the multicast lock. Can be called multiple times;
-     * uses reference counting to track acquisitions.
+     * Acquires the multicast lock.  Reference-counted — must be balanced
+     * with an equal number of [release] calls.
      *
-     * @return true if the lock is held after this call
+     * @return true if the lock is held after this call, false on error.
      */
-    fun acquire(): Boolean {
-        synchronized(lock) {
-            return try {
-                if (multicastLock == null) {
-                    multicastLock = wifiManager.createMulticastLock(LOCK_TAG).apply {
-                        setReferenceCounted(true)
-                    }
+    fun acquire(): Boolean = synchronized(mutex) {
+        try {
+            if (multicastLock == null) {
+                multicastLock = wifiManager.createMulticastLock(LOCK_TAG).apply {
+                    setReferenceCounted(true)
                 }
-
-                multicastLock?.let {
-                    if (!it.isHeld) {
-                        it.acquire()
-                        Log.d(TAG, "Multicast lock acquired")
-                    }
-                    lockCount++
-                    true
-                } ?: false
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to acquire multicast lock", e)
-                false
             }
+            val lock = multicastLock ?: return false
+            if (!lock.isHeld) {
+                lock.acquire()
+                Log.d(TAG, "Multicast lock acquired")
+            }
+            acquireCount++
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to acquire multicast lock", e)
+            false
         }
     }
 
     /**
-     * Releases the multicast lock. Uses reference counting,
-     * so the lock is only fully released when all acquirers have released.
+     * Decrements the reference count and releases the lock when it reaches 0.
+     * Safe to call more times than [acquire].
      */
-    fun release() {
-        synchronized(lock) {
-            try {
-                if (lockCount > 0) {
-                    lockCount--
-                }
-
-                if (lockCount == 0) {
-                    multicastLock?.let {
-                        if (it.isHeld) {
-                            it.release()
-                            Log.d(TAG, "Multicast lock released")
-                        }
+    fun release() = synchronized(mutex) {
+        try {
+            if (acquireCount > 0) acquireCount--
+            if (acquireCount == 0) {
+                multicastLock?.let { lock ->
+                    if (lock.isHeld) {
+                        lock.release()
+                        Log.d(TAG, "Multicast lock released")
                     }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to release multicast lock", e)
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to release multicast lock", e)
         }
     }
 
     /**
-     * Forces release of the multicast lock regardless of reference count.
-     * Use when shutting down the service.
+     * Forces the lock to be released regardless of the reference count.
+     * Call this from Service.onDestroy() to guarantee cleanup.
      */
-    fun forceRelease() {
-        synchronized(lock) {
-            try {
-                multicastLock?.let {
-                    if (it.isHeld) {
-                        it.release()
-                        Log.d(TAG, "Multicast lock force released")
-                    }
+    fun forceRelease() = synchronized(mutex) {
+        try {
+            multicastLock?.let { lock ->
+                if (lock.isHeld) {
+                    lock.release()
+                    Log.d(TAG, "Multicast lock force-released")
                 }
-                lockCount = 0
-                multicastLock = null
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to force release multicast lock", e)
             }
+            acquireCount = 0
+            multicastLock = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to force-release multicast lock", e)
         }
     }
 
     /**
-     * Checks if the multicast lock is currently held.
+     * Returns true if the lock is currently held.
      */
-    fun isHeld(): Boolean {
-        synchronized(lock) {
-            return multicastLock?.isHeld == true
-        }
-    }
+    val isHeld: Boolean
+        get() = synchronized(mutex) { multicastLock?.isHeld == true }
+
+    /**
+     * Current reference count (for diagnostics / testing).
+     */
+    val referenceCount: Int
+        get() = synchronized(mutex) { acquireCount }
 }

@@ -124,18 +124,5 @@ data class SsdpMessage(
             return message.toByteArray(Charsets.UTF_8)
         }
 
-        /**
-         * Creates an M-SEARCH specifically for media servers.
-         */
-        fun createMediaServerSearch(): ByteArray {
-            return createMSearchMessage("urn:schemas-upnp-org:device:MediaServer:1")
-        }
-
-        /**
-         * Creates an M-SEARCH specifically for Anchor servers.
-         */
-        fun createAnchorSearch(): ByteArray {
-            return createMSearchMessage("urn:schemas-anchor:device:MediaServer:1")
-        }
     }
 }

@@ -1,94 +1,3 @@
-//plugins {
-//    alias(libs.plugins.android.application)
-//    alias(libs.plugins.kotlin.compose)
-//}
-//
-//android {
-//    namespace = "com.example.anchor"
-//    compileSdk {
-//        version = release(36)
-//    }
-//
-//    defaultConfig {
-//        applicationId = "com.example.anchor"
-//        minSdk = 24
-//        targetSdk = 35
-//        versionCode = 1
-//        versionName = "1.0"
-//
-//        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-//    }
-//
-//    buildTypes {
-//        release {
-//            isMinifyEnabled = false
-//            proguardFiles(
-//                getDefaultProguardFile("proguard-android-optimize.txt"),
-//                "proguard-rules.pro"
-//            )
-//        }
-//    }
-//    compileOptions {
-//        sourceCompatibility = JavaVersion.VERSION_11
-//        targetCompatibility = JavaVersion.VERSION_11
-//    }
-//    buildFeatures {
-//        compose = true
-//    }
-//    // ADD THIS BLOCK
-//    packaging {
-//        resources {
-//            excludes += "META-INF/INDEX.LIST"
-//            // It's also highly recommended to exclude these when using Netty/Ktor
-//            excludes += "META-INF/io.netty.versions.properties"
-//            excludes += "META-INF/DEPENDENCIES"
-//            excludes += "META-INF/LICENSE"
-//            excludes += "META-INF/NOTICE"
-//        }
-//    }
-//}
-//
-//dependencies {
-//    // Core Android
-//    implementation(libs.androidx.core.ktx)
-//    implementation(libs.androidx.lifecycle.runtime.ktx)
-//    implementation(libs.androidx.activity.compose)
-//
-//    // Compose
-//    implementation(platform(libs.androidx.compose.bom))
-//    implementation(libs.bundles.compose)
-//
-//    // Ktor Server
-//    implementation(libs.bundles.ktor)
-//
-//    // Coroutines
-//    implementation(libs.kotlinx.coroutines.android)
-//    implementation(libs.kotlinx.coroutines.android)
-//    implementation(libs.kotlinx.coroutines.jdk8)
-//    // Glide for thumbnails
-//    implementation(libs.glide)
-//
-//    // Gson
-//    implementation(libs.gson)
-//
-//    // WorkManager for background tasks
-//    implementation(libs.androidx.work.runtime.ktx)
-//
-//    // DocumentFile
-//    implementation(libs.androidx.documentfile)
-//
-//    // Hilt
-//    implementation(libs.koin.androidx.compose)
-//    // Testing
-//    testImplementation(libs.junit)
-//    androidTestImplementation(libs.androidx.junit)
-//    androidTestImplementation(libs.androidx.espresso.core)
-//    androidTestImplementation(platform(libs.androidx.compose.bom))
-//    androidTestImplementation(libs.androidx.ui.test.junit4)
-//    debugImplementation(libs.androidx.ui.tooling)
-//    debugImplementation(libs.androidx.ui.test.manifest)
-//}
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose) // This now handles the Compose Compiler
@@ -110,6 +19,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            isMinifyEnabled = false
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -136,8 +48,15 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "/META-INF/INDEX.LIST"
             excludes += "/META-INF/io.netty.versions.properties"
-            // Adding a common Ktor/Coroutines exclusion for version 3.x
             excludes += "/META-INF/kotlinx-serialization-json.kotlin_module"
+        }
+    }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+            all { it.useJUnitPlatform() }   // enables JUnit 5
         }
     }
 }
@@ -160,6 +79,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.service)
+
+    // ── Koin DI ────────────────────────────────────────────────
+    implementation(libs.koin.android)
+    implementation(libs.koin.androidx.compose)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.core)
@@ -188,6 +111,19 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
     implementation(libs.zxing.core)
+
+
+    // ── Unit Tests ─────────────────────────────────────────────
+    testImplementation(libs.junit.jupiter)
+    testImplementation(libs.junit.jupiter.params)
+    testImplementation(libs.mockk)
+    testImplementation(libs.turbine)
+    testImplementation(libs.truth)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.koin.test)
+    testImplementation(libs.koin.test.junit5)
+    testRuntimeOnly(libs.junit.platform.launcher)
 
     // Testing
     testImplementation(libs.junit)

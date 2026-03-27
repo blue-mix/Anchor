@@ -28,6 +28,14 @@ enum class OnboardingStep {
     COMPLETE
 }
 
+/**
+ * ViewModel for the onboarding flow.
+ *
+ * No logic changes from original — this ViewModel only uses [PermissionUtils]
+ * and [NetworkUtils] from the core layer, which are unchanged.
+ * Package declaration kept as-is; file moved to the presentation screens
+ * directory to match the target structure.
+ */
 class OnboardingViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(OnboardingUiState())
@@ -53,17 +61,14 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
 
     fun moveToNextStep() {
         viewModelScope.launch {
-            val currentStep = _uiState.value.currentStep
-            val nextStep = when (currentStep) {
+            val nextStep = when (_uiState.value.currentStep) {
                 OnboardingStep.WELCOME -> OnboardingStep.MEDIA_PERMISSIONS
                 OnboardingStep.MEDIA_PERMISSIONS -> OnboardingStep.NOTIFICATION_PERMISSION
                 OnboardingStep.NOTIFICATION_PERMISSION -> OnboardingStep.NETWORK_CHECK
                 OnboardingStep.NETWORK_CHECK -> OnboardingStep.COMPLETE
                 OnboardingStep.COMPLETE -> OnboardingStep.COMPLETE
             }
-
             _uiState.update { it.copy(currentStep = nextStep) }
-
             if (nextStep == OnboardingStep.COMPLETE) {
                 _uiState.update { it.copy(isComplete = true) }
             }
@@ -72,15 +77,12 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
 
     fun onMediaPermissionsResult(granted: Boolean) {
         _uiState.update { it.copy(mediaPermissionsGranted = granted) }
-        if (granted) {
-            moveToNextStep()
-        }
+        if (granted) moveToNextStep()
     }
 
     fun onNotificationPermissionResult(granted: Boolean) {
         _uiState.update { it.copy(notificationPermissionGranted = granted) }
-        // Move forward regardless - notification permission is optional
-        moveToNextStep()
+        moveToNextStep()   // notification permission is optional — always advance
     }
 
     fun refreshNetworkState() {
@@ -94,11 +96,6 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun skipToComplete() {
-        _uiState.update {
-            it.copy(
-                currentStep = OnboardingStep.COMPLETE,
-                isComplete = true
-            )
-        }
+        _uiState.update { it.copy(currentStep = OnboardingStep.COMPLETE, isComplete = true) }
     }
 }

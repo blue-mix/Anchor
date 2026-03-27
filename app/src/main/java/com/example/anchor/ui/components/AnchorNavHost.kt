@@ -11,6 +11,7 @@ import com.example.anchor.ui.DiscoveryScreen
 import com.example.anchor.ui.browser.RemoteBrowserScreen
 import com.example.anchor.ui.dashboard.DashboardScreen
 import com.example.anchor.ui.onboarding.OnboardingScreen
+import com.example.anchor.ui.player.PlayerScreen
 
 
 @Composable

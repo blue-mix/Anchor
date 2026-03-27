@@ -19,7 +19,16 @@ import com.example.anchor.ui.components.NavigationRoutes
 import com.example.anchor.ui.onboarding.OnboardingScreen
 import com.example.anchor.ui.theme.AnchorTheme
 
-
+/**
+ * Single-activity entry point.
+ *
+ * No logic changes from original — this file only uses [PermissionUtils]
+ * from the core layer and the navigation / UI component layer, both unchanged.
+ *
+ * The only structural note: [OnboardingScreen] and [AnchorNavHost] still
+ * reference their existing package paths; those are updated in the
+ * presentation layer pass (screens + navigation).
+ */
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,4 +63,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-

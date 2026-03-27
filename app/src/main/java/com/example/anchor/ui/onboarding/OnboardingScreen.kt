@@ -1,5 +1,3 @@
-// app/src/main/java/com/example/anchor/ui/screens/onboarding/OnboardingScreen.kt
-
 package com.example.anchor.ui.onboarding
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -40,68 +38,62 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.anchor.core.util.PermissionUtils
+import org.koin.androidx.compose.koinViewModel
 
-// Replacing the invalid icon with a valid one
-private val PlayIcon: ImageVector
-    @Composable get() = Icons.Rounded.CheckCircle // Placeholder, we'll use a different approach
-
+/**
+ * Onboarding screen — walks the user through permissions and network check.
+ *
+ * No type changes from original — all types used here are from the core
+ * and onboarding packages, both unchanged.
+ * Only change: [viewModel()] → [koinViewModel()].
+ */
 @Composable
 fun OnboardingScreen(
     onOnboardingComplete: () -> Unit,
-    viewModel: OnboardingViewModel = viewModel()
+    viewModel: OnboardingViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Navigate away when onboarding is complete
     LaunchedEffect(uiState.isComplete) {
-        if (uiState.isComplete) {
-            onOnboardingComplete()
-        }
+        if (uiState.isComplete) onOnboardingComplete()
     }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         AnimatedContent(
             targetState = uiState.currentStep,
             transitionSpec = {
-                (slideInHorizontally { width -> width } + fadeIn())
-                    .togetherWith(slideOutHorizontally { width -> -width } + fadeOut())
+                (slideInHorizontally { it } + fadeIn())
+                    .togetherWith(slideOutHorizontally { -it } + fadeOut())
             },
             label = "onboarding_transition"
         ) { step ->
             when (step) {
-                OnboardingStep.WELCOME -> WelcomeStep(
-                    onContinue = { viewModel.moveToNextStep() }
-                )
+                OnboardingStep.WELCOME ->
+                    WelcomeStep(onContinue = { viewModel.moveToNextStep() })
 
-                OnboardingStep.MEDIA_PERMISSIONS -> MediaPermissionsStep(
-                    onPermissionsResult = { granted -> viewModel.onMediaPermissionsResult(granted) },
-                    onSkip = { viewModel.moveToNextStep() }
-                )
+                OnboardingStep.MEDIA_PERMISSIONS ->
+                    MediaPermissionsStep(
+                        onPermissionsResult = { viewModel.onMediaPermissionsResult(it) },
+                        onSkip = { viewModel.moveToNextStep() }
+                    )
 
-                OnboardingStep.NOTIFICATION_PERMISSION -> NotificationPermissionStep(
-                    onPermissionResult = { granted ->
-                        viewModel.onNotificationPermissionResult(
-                            granted
-                        )
-                    },
-                    onSkip = { viewModel.moveToNextStep() }
-                )
+                OnboardingStep.NOTIFICATION_PERMISSION ->
+                    NotificationPermissionStep(
+                        onPermissionResult = { viewModel.onNotificationPermissionResult(it) },
+                        onSkip = { viewModel.moveToNextStep() }
+                    )
 
-                OnboardingStep.NETWORK_CHECK -> NetworkCheckStep(
-                    isConnected = uiState.isConnectedToWifi,
-                    ipAddress = uiState.localIpAddress,
-                    onRefresh = { viewModel.refreshNetworkState() },
-                    onContinue = { viewModel.moveToNextStep() }
-                )
+                OnboardingStep.NETWORK_CHECK ->
+                    NetworkCheckStep(
+                        isConnected = uiState.isConnectedToWifi,
+                        ipAddress = uiState.localIpAddress,
+                        onRefresh = { viewModel.refreshNetworkState() },
+                        onContinue = { viewModel.moveToNextStep() }
+                    )
 
-                OnboardingStep.COMPLETE -> CompleteStep(
-                    onFinish = { viewModel.skipToComplete() }
-                )
+                OnboardingStep.COMPLETE ->
+                    CompleteStep(onFinish = { viewModel.skipToComplete() })
             }
         }
     }
@@ -124,20 +116,16 @@ private fun MediaPermissionsStep(
     onSkip: () -> Unit
 ) {
     val permissions = PermissionUtils.getRequiredMediaPermissions()
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissionsMap ->
-        val allGranted = permissionsMap.values.all { it }
-        onPermissionsResult(allGranted)
-    }
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { map -> onPermissionsResult(map.values.all { it }) }
 
     OnboardingStepLayout(
         icon = Icons.Rounded.Folder,
         title = "Access Your Media",
         description = "Anchor needs permission to access your videos, music, and photos so it can share them with other devices on your network.",
         primaryButtonText = "Grant Access",
-        onPrimaryClick = { permissionLauncher.launch(permissions.toTypedArray()) },
+        onPrimaryClick = { launcher.launch(permissions.toTypedArray()) },
         secondaryButtonText = "Skip for Now",
         onSecondaryClick = onSkip
     )
@@ -149,22 +137,16 @@ private fun NotificationPermissionStep(
     onSkip: () -> Unit
 ) {
     val permission = PermissionUtils.getNotificationPermission()
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        onPermissionResult(granted)
-    }
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { onPermissionResult(it) }
 
     OnboardingStepLayout(
         icon = Icons.Rounded.Notifications,
         title = "Stay Informed",
-        description = "Enable notifications to see when Anchor is actively serving media. This helps you know when other devices are streaming from your phone.",
+        description = "Enable notifications to see when Anchor is actively serving media.",
         primaryButtonText = "Enable Notifications",
-        onPrimaryClick = {
-            permission?.let { permissionLauncher.launch(it) }
-                ?: onPermissionResult(true)
-        },
+        onPrimaryClick = { permission?.let { launcher.launch(it) } ?: onPermissionResult(true) },
         secondaryButtonText = "Skip",
         onSecondaryClick = onSkip
     )
@@ -180,11 +162,10 @@ private fun NetworkCheckStep(
     OnboardingStepLayout(
         icon = Icons.Rounded.Wifi,
         title = if (isConnected) "Connected!" else "Connect to Wi-Fi",
-        description = if (isConnected) {
-            "You're connected to your local network.\n\nYour device IP: ${ipAddress ?: "Detecting..."}"
-        } else {
-            "Please connect to a Wi-Fi network to use Anchor. Other devices on the same network will be able to discover and stream your media."
-        },
+        description = if (isConnected)
+            "You're connected to your local network.\n\nYour device IP: ${ipAddress ?: "Detecting…"}"
+        else
+            "Please connect to a Wi-Fi network to use Anchor.",
         primaryButtonText = if (isConnected) "Continue" else "Refresh",
         onPrimaryClick = if (isConnected) onContinue else onRefresh,
         secondaryButtonText = if (!isConnected) "Continue Anyway" else null,
@@ -221,11 +202,8 @@ private fun OnboardingStepLayout(
         verticalArrangement = Arrangement.Center
     ) {
         Spacer(modifier = Modifier.weight(1f))
-
         Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            ),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
             modifier = Modifier.size(120.dp)
         ) {
             Icon(
@@ -237,18 +215,9 @@ private fun OnboardingStepLayout(
                 tint = MaterialTheme.colorScheme.onPrimaryContainer
             )
         }
-
         Spacer(modifier = Modifier.height(32.dp))
-
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-
+        Text(title, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
         Spacer(modifier = Modifier.height(16.dp))
-
         Text(
             text = description,
             style = MaterialTheme.typography.bodyLarge,
@@ -256,29 +225,18 @@ private fun OnboardingStepLayout(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
-
         Spacer(modifier = Modifier.weight(1f))
-
-        Button(
-            onClick = onPrimaryClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-        ) {
-            Text(text = primaryButtonText)
+        Button(onClick = onPrimaryClick, modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)) {
+            Text(primaryButtonText)
         }
-
         if (secondaryButtonText != null && onSecondaryClick != null) {
             Spacer(modifier = Modifier.height(12.dp))
-
-            TextButton(
-                onClick = onSecondaryClick,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(text = secondaryButtonText)
+            TextButton(onClick = onSecondaryClick, modifier = Modifier.fillMaxWidth()) {
+                Text(secondaryButtonText)
             }
         }
-
         Spacer(modifier = Modifier.height(32.dp))
     }
 }

@@ -1,5 +1,3 @@
-// app/src/main/java/com/example/anchor/ui/screens/discovery/DiscoveryScreen.kt
-
 package com.example.anchor.ui
 
 import androidx.compose.animation.AnimatedVisibility
@@ -41,7 +39,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -49,26 +46,33 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.anchor.data.model.DiscoveredDevice
-import com.example.anchor.data.model.ServerType
+import com.example.anchor.domain.model.Device
+import com.example.anchor.domain.model.DeviceType
+import org.koin.androidx.compose.koinViewModel
 
-
+/**
+ * Discovery screen — shows UPnP/SSDP devices found on the LAN.
+ *
+ * Changes from original:
+ *  - [DiscoveredDevice] → [Device] (domain model).
+ *  - [ServerType] → [DeviceType] (domain enum).
+ *  - [viewModel()] → [koinViewModel()] — [DiscoveryViewModel] no longer
+ *    extends AndroidViewModel so Compose's default factory can't construct it;
+ *    Koin's factory resolves the [DeviceRepository] dependency.
+ *  - [onDeviceClick] callback type updated to [Device].
+ *  - [ServerTypeBadge], [getDeviceIcon], [getDeviceIconTint] all switch on
+ *    [DeviceType] instead of the removed [ServerType].
+ *  - [DisposableEffect] removed — the ViewModel starts/stops discovery in
+ *    init / onCleared, so the screen doesn't need to manage that lifecycle.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiscoveryScreen(
-    onDeviceClick: (DiscoveredDevice) -> Unit,
-    onNavigateBack: () -> Unit = {},  // Add this parameter
-    viewModel: DiscoveryViewModel = viewModel()
+    onDeviceClick: (Device) -> Unit,
+    onNavigateBack: () -> Unit = {},
+    viewModel: DiscoveryViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-
-    DisposableEffect(Unit) {
-        viewModel.startDiscovery()
-        onDispose {
-            viewModel.stopDiscovery()
-        }
-    }
 
     Scaffold(
         topBar = {
@@ -109,13 +113,11 @@ fun DiscoveryScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Filter chips
             FilterChipRow(
                 currentFilter = uiState.filterType,
                 onFilterSelected = { viewModel.setFilter(it) }
             )
 
-            // Device list or empty state
             if (uiState.devices.isEmpty()) {
                 EmptyDiscoveryState(
                     isScanning = uiState.isScanning,
@@ -130,6 +132,8 @@ fun DiscoveryScreen(
         }
     }
 }
+
+// ── Filter chips ──────────────────────────────────────────────
 
 @Composable
 private fun FilterChipRow(
@@ -160,32 +164,25 @@ private fun FilterChipRow(
     }
 }
 
+// ── Device list ───────────────────────────────────────────────
+
 @Composable
 private fun DeviceList(
-    devices: List<DiscoveredDevice>,
-    onDeviceClick: (DiscoveredDevice) -> Unit
+    devices: List<Device>,
+    onDeviceClick: (Device) -> Unit
 ) {
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(
-            items = devices,
-            key = { it.usn }
-        ) { device ->
-            DeviceCard(
-                device = device,
-                onClick = { onDeviceClick(device) }
-            )
+        items(items = devices, key = { it.usn }) { device ->
+            DeviceCard(device = device, onClick = { onDeviceClick(device) })
         }
     }
 }
 
 @Composable
-private fun DeviceCard(
-    device: DiscoveredDevice,
-    onClick: () -> Unit
-) {
+private fun DeviceCard(device: Device, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -198,7 +195,6 @@ private fun DeviceCard(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Device icon
             Icon(
                 imageVector = getDeviceIcon(device.serverType),
                 contentDescription = null,
@@ -208,7 +204,6 @@ private fun DeviceCard(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Device info
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = device.displayName,
@@ -216,9 +211,7 @@ private fun DeviceCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-
                 Spacer(modifier = Modifier.height(4.dp))
-
                 Text(
                     text = buildString {
                         append(device.ipAddress)
@@ -227,7 +220,6 @@ private fun DeviceCard(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-
                 if (device.manufacturer.isNotEmpty()) {
                     Text(
                         text = device.manufacturer,
@@ -239,24 +231,22 @@ private fun DeviceCard(
                 }
             }
 
-            // Server type badge
             ServerTypeBadge(serverType = device.serverType)
         }
     }
 }
 
-@Composable
-private fun ServerTypeBadge(serverType: ServerType) {
-    val (text, color) = when (serverType) {
-        ServerType.ANCHOR -> "Anchor" to MaterialTheme.colorScheme.primary
-        ServerType.DLNA_MEDIA_SERVER -> "DLNA" to MaterialTheme.colorScheme.secondary
-        ServerType.DLNA_RENDERER -> "TV" to MaterialTheme.colorScheme.tertiary
-        ServerType.UNKNOWN -> "Other" to MaterialTheme.colorScheme.outline
-    }
+// ── Type badge ────────────────────────────────────────────────
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.1f))
-    ) {
+@Composable
+private fun ServerTypeBadge(serverType: DeviceType) {
+    val (text, color) = when (serverType) {
+        DeviceType.ANCHOR -> "Anchor" to MaterialTheme.colorScheme.primary
+        DeviceType.DLNA_MEDIA_SERVER -> "DLNA" to MaterialTheme.colorScheme.secondary
+        DeviceType.DLNA_RENDERER -> "TV" to MaterialTheme.colorScheme.tertiary
+        DeviceType.UNKNOWN -> "Other" to MaterialTheme.colorScheme.outline
+    }
+    Card(colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.1f))) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -266,34 +256,22 @@ private fun ServerTypeBadge(serverType: ServerType) {
     }
 }
 
+// ── Empty state ───────────────────────────────────────────────
+
 @Composable
-private fun EmptyDiscoveryState(
-    isScanning: Boolean,
-    errorMessage: String?
-) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
+private fun EmptyDiscoveryState(isScanning: Boolean, errorMessage: String?) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            AnimatedVisibility(
-                visible = isScanning,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
+            AnimatedVisibility(visible = isScanning, enter = fadeIn(), exit = fadeOut()) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator()
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Scanning network...",
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                    Text("Scanning network…", style = MaterialTheme.typography.bodyLarge)
                 }
             }
-
             AnimatedVisibility(
                 visible = !isScanning && errorMessage == null,
                 enter = fadeIn(),
@@ -307,19 +285,15 @@ private fun EmptyDiscoveryState(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "No devices found",
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Text("No devices found", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Make sure other devices are on the same Wi-Fi network",
+                        "Make sure other devices are on the same Wi-Fi network",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-
             AnimatedVisibility(
                 visible = errorMessage != null,
                 enter = fadeIn(),
@@ -327,13 +301,13 @@ private fun EmptyDiscoveryState(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "Discovery Error",
+                        "Discovery Error",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.error
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = errorMessage ?: "",
+                        errorMessage ?: "",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -343,20 +317,20 @@ private fun EmptyDiscoveryState(
     }
 }
 
+// ── Icon helpers ──────────────────────────────────────────────
+
 @Composable
-private fun getDeviceIcon(serverType: ServerType): ImageVector {
-    return when (serverType) {
-        ServerType.ANCHOR -> Icons.Rounded.PhoneAndroid
-        ServerType.DLNA_MEDIA_SERVER -> Icons.Rounded.Storage
-        ServerType.DLNA_RENDERER -> Icons.Rounded.Tv
-        ServerType.UNKNOWN -> Icons.Rounded.Computer
-    }
+private fun getDeviceIcon(serverType: DeviceType): ImageVector = when (serverType) {
+    DeviceType.ANCHOR -> Icons.Rounded.PhoneAndroid
+    DeviceType.DLNA_MEDIA_SERVER -> Icons.Rounded.Storage
+    DeviceType.DLNA_RENDERER -> Icons.Rounded.Tv
+    DeviceType.UNKNOWN -> Icons.Rounded.Computer
 }
 
 @Composable
-private fun getDeviceIconTint(serverType: ServerType) = when (serverType) {
-    ServerType.ANCHOR -> MaterialTheme.colorScheme.primary
-    ServerType.DLNA_MEDIA_SERVER -> MaterialTheme.colorScheme.secondary
-    ServerType.DLNA_RENDERER -> MaterialTheme.colorScheme.tertiary
-    ServerType.UNKNOWN -> MaterialTheme.colorScheme.onSurfaceVariant
+private fun getDeviceIconTint(serverType: DeviceType) = when (serverType) {
+    DeviceType.ANCHOR -> MaterialTheme.colorScheme.primary
+    DeviceType.DLNA_MEDIA_SERVER -> MaterialTheme.colorScheme.secondary
+    DeviceType.DLNA_RENDERER -> MaterialTheme.colorScheme.tertiary
+    DeviceType.UNKNOWN -> MaterialTheme.colorScheme.onSurfaceVariant
 }
