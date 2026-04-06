@@ -1,6 +1,6 @@
 // README.md
 
-# Anchor 🔗
+# Anchor
 
 A lightweight, cross-platform local media server for Android. Turn your phone into a streaming hub - share videos, music, and photos to Smart TVs, VLC, and any device on your local network without internet or cloud storage.
 
@@ -11,9 +11,9 @@ A lightweight, cross-platform local media server for Android. Turn your phone in
 
 ---
 
-## ✨ Features
+## Features
 
-### 🖥️ Server Mode
+### Server Mode
 - **HTTP Media Server** - Host your media files over local network
 - **Lossless Streaming** - Byte-for-byte transfer, no transcoding
 - **Byte-Range Support** - Seek/scrub through videos seamlessly
@@ -21,13 +21,13 @@ A lightweight, cross-platform local media server for Android. Turn your phone in
 - **QR Code Sharing** - Quick connection for other devices
 - **Background Service** - Keeps running with persistent notification
 
-### 📡 Client Mode
+### Client Mode
 - **Device Discovery** - Find other Anchor servers and DLNA devices
 - **Remote Browsing** - Browse files on discovered servers
 - **In-App Playback** - Play media with built-in ExoPlayer
 - **Cast to TV** - Push media to Smart TVs *(planned)*
 
-### 🎬 Media Support
+### Media Support
 | Type | Formats |
 |------|---------|
 | Video | MP4, MKV, AVI, MOV, WebM, FLV, 3GP |
@@ -36,7 +36,7 @@ A lightweight, cross-platform local media server for Android. Turn your phone in
 
 ---
 
-## 📱 Screenshots
+## Screenshots
 
 <!-- Add screenshots here -->
 | Dashboard | Discovery | Browser | Player |
@@ -45,7 +45,7 @@ A lightweight, cross-platform local media server for Android. Turn your phone in
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                         ANCHOR                              │
@@ -73,7 +73,8 @@ A lightweight, cross-platform local media server for Android. Turn your phone in
 |-----------|------------|
 | Language | Kotlin 2.0 |
 | UI | Jetpack Compose + Material 3 |
-| Architecture | MVVM + StateFlow |
+| Architecture | Clean Architecture + MVVM + StateFlow |
+| Dependency Injection | Koin |
 | HTTP Server | Ktor (Netty) |
 | Media Playback | AndroidX Media3 (ExoPlayer) |
 | Discovery | Native UDP/Multicast (SSDP) |
@@ -82,7 +83,7 @@ A lightweight, cross-platform local media server for Android. Turn your phone in
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - Android Studio Hedgehog or newer
@@ -118,7 +119,7 @@ cd anchor
 
 ---
 
-## 📖 Usage
+## Usage
 
 ### Starting the Server
 
@@ -159,7 +160,7 @@ http://[PHONE_IP]:8080/
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
 ### Version 1.0 (Current)
 
@@ -199,25 +200,23 @@ http://[PHONE_IP]:8080/
 
 ### Version 2.0 (Future)
 
-- [ ] Full code refactor (Clean Architecture)
-- [ ] Dependency injection (Hilt)
 - [ ] Unit & integration tests
 - [ ] CI/CD pipeline
 - [ ] Play Store release
 
 ---
 
-## 🐛 Known Issues
+## Known Issues
 
 | Issue | Status | Workaround |
 |-------|--------|------------|
-| Shared folders reset on restart | 🔴 Open | Re-add folders after restart |
-| Some TVs don't show thumbnails | 🟡 Investigating | Thumbnails work in VLC |
-| Player not tested with remote servers | 🟡 Testing | Use VLC as alternative |
+| Shared folders reset on restart | Open | Re-add folders after restart |
+| Some TVs don't show thumbnails | Investigating | Thumbnails work in VLC |
+| Player not tested with remote servers | Testing | Use VLC as alternative |
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please read our contributing guidelines before submitting PRs.
 
@@ -236,46 +235,46 @@ Contributions are welcome! Please read our contributing guidelines before submit
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 ```
 app/src/main/java/com/example/anchor/
-├── AnchorApplication.kt          # Application class
+├── AnchorApp.kt                  # Application class
 ├── MainActivity.kt               # Entry point
-├── ui/
-│   ├── navigation/               # Navigation setup
-│   ├── screens/
-│   │   ├── onboarding/           # Permission flow
-│   │   ├── dashboard/            # Main server controls
-│   │   ├── discovery/            # Find devices
-│   │   ├── browser/              # Remote file browsing
-│   │   └── player/               # Media playback
-│   └── theme/                    # Material 3 theming
-├── server/
-│   ├── AnchorHttpServer.kt       # Ktor HTTP server
-│   ├── AnchorServerService.kt    # Foreground service
-│   ├── ContentDirectoryService.kt# DLNA content directory
-│   ├── DlnaDescriptionHandler.kt # UPnP XML descriptions
-│   ├── MediaFile.kt              # Media file model
-│   └── ServiceState.kt           # Server state management
-├── discovery/
-│   ├── DiscoveredDevice.kt       # Device model
-│   ├── DeviceDescriptionParser.kt# XML parser
-│   ├── SsdpAnnouncer.kt          # SSDP broadcasts
-│   ├── SsdpMessage.kt            # SSDP protocol
-│   └── UpnpDiscoveryManager.kt   # Discovery engine
-├── media/
-│   ├── AnchorMediaService.kt     # Media session service
-│   └── ThumbnailGenerator.kt     # Thumbnail extraction
-└── utils/
-    ├── MimeTypeUtils.kt          # MIME type detection
-    ├── MulticastLockManager.kt   # Multicast lock
-    ├── NetworkUtils.kt           # Network helpers
-    └── PermissionUtils.kt        # Permission helpers
+├── core/                         # Core utilities and extensions
+│   ├── extension/
+│   ├── result/
+│   └── util/
+├── data/                         # Data layer (DTOs, Mappers, Repositories)
+│   ├── dto/
+│   ├── mapper/
+│   ├── model/
+│   ├── repository/
+│   └── source/
+├── di/                           # Dependency Injection setup (Koin)
+├── domain/                       # Domain layer (Models, Repositories, Use Cases)
+│   ├── model/
+│   ├── repository/
+│   └── usecase/
+├── server/                       # Ktor HTTP Server and DLNA
+│   ├── AnchorHttpServer.kt
+│   ├── DeviceDescriptionParser.kt
+│   ├── UpnpDiscoveryManager.kt
+│   ├── dlna/
+│   ├── handler/
+│   ├── routing/
+│   └── service/
+└── ui/                           # Jetpack Compose UI (Screens, ViewModels)
+    ├── browser/
+    ├── components/
+    ├── dashboard/
+    ├── onboarding/
+    ├── player/
+    └── theme/
 ```
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 ```
@@ -304,7 +303,7 @@ SOFTWARE.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - [Ktor](https://ktor.io/) - Async HTTP server framework
 - [ExoPlayer](https://exoplayer.dev/) - Media playback library
@@ -314,7 +313,7 @@ SOFTWARE.
 
 ---
 
-## 📬 Contact
+## Contact
 
 - **Issues**: [GitHub Issues](https://github.com/yourusername/anchor/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/yourusername/anchor/discussions)
@@ -322,5 +321,5 @@ SOFTWARE.
 ---
 
 <p align="center">
-  Made with ❤️ using Kotlin & Jetpack Compose
+  Made using Kotlin & Jetpack Compose
 </p>
