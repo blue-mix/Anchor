@@ -1,5 +1,3 @@
-// README.md
-
 # Anchor
 
 A lightweight, cross-platform local media server for Android. Turn your phone into a streaming hub - share videos, music, and photos to Smart TVs, VLC, and any device on your local network without internet or cloud storage.
