@@ -1,6 +1,9 @@
 package com.example.anchor.data.repository
 
 import android.util.Log
+import com.example.anchor.core.config.AnchorConfig.Discovery.SEARCH_INTERVAL_MS
+import com.example.anchor.core.config.AnchorConfig.Discovery.STALE_CHECK_MS
+import com.example.anchor.core.config.AnchorConfig.Discovery.STALE_THRESHOLD_MS
 import com.example.anchor.data.dto.SsdpMessageDto
 import com.example.anchor.data.dto.SsdpMessageType
 import com.example.anchor.data.mapper.DeviceMapper.enrichWithDescription
@@ -22,17 +25,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 
 /**
  * Concrete implementation of [DeviceRepository].
  *
  * Orchestrates [SsdpDataSource] (UDP) and [HttpClientDataSource] (HTTP) to
  * maintain a live, deduplicated map of discovered network devices.
- *
- * Lifecycle:
- *  - Call [startDiscovery] to open the multicast socket and begin scanning.
- *  - Call [stopDiscovery] when the feature is no longer visible.
- *  - Call [destroy] (from onCleared / Service.onDestroy) to cancel the scope.
  */
 class DeviceRepositoryImpl(
     private val ssdpDataSource: SsdpDataSource,
@@ -41,15 +40,13 @@ class DeviceRepositoryImpl(
 
     companion object {
         private const val TAG = "DeviceRepositoryImpl"
-        private const val SEARCH_INTERVAL_MS = 30_000L
-        private const val STALE_CHECK_MS = 60_000L
-        private const val STALE_THRESHOLD_MS = 5 * 60_000L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // ── Observable state ──────────────────────────────────────
 
+    private val _devicesMap = mutableMapOf<String, Device>()
     private val _devices = MutableStateFlow<Map<String, Device>>(emptyMap())
     private val _isScanning = MutableStateFlow(false)
     private val _lastError = MutableStateFlow<String?>(null)
@@ -86,7 +83,7 @@ class DeviceRepositoryImpl(
     }
 
     override suspend fun refresh(): List<Device> {
-        _devices.value = emptyMap()
+        clearDevices()
         val results = ssdpDataSource.search("ssdp:all")
         results.forEach { (msg, srcIp) ->
             if (msg.type == SsdpMessageType.RESPONSE) processMessage(msg, srcIp)
@@ -95,10 +92,12 @@ class DeviceRepositoryImpl(
     }
 
     override fun clearDevices() {
-        _devices.value = emptyMap()
+        synchronized(_devicesMap) {
+            _devicesMap.clear()
+            _devices.value = emptyMap()
+        }
     }
 
-    /** Releases all resources — call from ViewModel.onCleared or Service.onDestroy. */
     fun destroy() {
         stopDiscovery()
         scope.cancel()
@@ -121,9 +120,7 @@ class DeviceRepositoryImpl(
 
     private fun startPeriodicSearch() {
         searchJob = scope.launch {
-            // Immediate initial search
             sendSearches()
-
             while (isActive) {
                 delay(SEARCH_INTERVAL_MS)
                 sendSearches()
@@ -144,13 +141,16 @@ class DeviceRepositoryImpl(
             while (isActive) {
                 delay(STALE_CHECK_MS)
                 val now = System.currentTimeMillis()
-                val updated = _devices.value.filterValues { device ->
-                    now - device.lastSeen <= STALE_THRESHOLD_MS
-                }
-                if (updated.size != _devices.value.size) {
-                    val removed = _devices.value.size - updated.size
-                    _devices.value = updated
-                    Log.d(TAG, "Removed $removed stale device(s)")
+                synchronized(_devicesMap) {
+                    val toRemove = _devicesMap.filterValues { device ->
+                        now - device.lastSeen > STALE_THRESHOLD_MS
+                    }.keys
+                    
+                    if (toRemove.isNotEmpty()) {
+                        toRemove.forEach { _devicesMap.remove(it) }
+                        _devices.value = _devicesMap.toMap()
+                        Log.d(TAG, "Removed ${toRemove.size} stale device(s)")
+                    }
                 }
             }
         }
@@ -159,42 +159,77 @@ class DeviceRepositoryImpl(
     // ── Message processing ────────────────────────────────────
 
     private suspend fun processMessage(msg: SsdpMessageDto, srcIp: String) {
-        // Handle byebye — remove from map
-        if (msg.isByeBye) {
-            msg.usn?.let { usn ->
-                _devices.value = _devices.value.toMutableMap().also { it.remove(usn) }
-                Log.d(TAG, "Device left: $usn")
-            }
-            return
+        when {
+            msg.isByeBye -> handleDeviceDeparture(msg)
+            else -> handleDeviceAnnouncement(msg, srcIp)
         }
+    }
 
-        // Build a stub device from the SSDP message
+    private fun handleDeviceDeparture(msg: SsdpMessageDto) {
+        msg.usn?.let { usn ->
+            removeDevice(usn)
+            Log.d(TAG, "Device left: $usn")
+        }
+    }
+
+    private suspend fun handleDeviceAnnouncement(msg: SsdpMessageDto, srcIp: String) {
         val stub = msg.toDeviceStub(srcIp) ?: return
 
-        // Skip bare UNKNOWN entries with no useful location
-        if (stub.serverType == DeviceType.UNKNOWN && !stub.location.startsWith("http")) return
+        if (shouldSkipDevice(stub)) return
 
-        // If we already know this device, just refresh the timestamp
-        val existing = _devices.value[stub.usn]
-        if (existing != null && existing.friendlyName.isNotEmpty()) {
-            _devices.value = _devices.value.toMutableMap().also {
-                it[stub.usn] = existing.refreshed()
-            }
+        val existing = findExistingDevice(stub.usn)
+        if (existing != null && existing.isFullyEnriched()) {
+            refreshDevice(existing)
             return
         }
 
-        // Enrich the stub by fetching the device description XML
-        scope.launch {
-            val enriched = httpClientDataSource
-                .fetchDeviceDescription(stub.location)
-                .getOrNull()
-                ?.let { stub.enrichWithDescription(it) }
-                ?: stub
+        enrichAndAddDevice(stub)
+    }
 
-            _devices.value = _devices.value.toMutableMap().also {
-                it[enriched.usn] = enriched
+    private fun shouldSkipDevice(device: Device): Boolean {
+        return device.serverType == DeviceType.UNKNOWN && 
+               !device.location.startsWith("http")
+    }
+
+    private fun findExistingDevice(usn: String): Device? {
+        return synchronized(_devicesMap) { _devicesMap[usn] }
+    }
+
+    private fun Device.isFullyEnriched(): Boolean {
+        return friendlyName.isNotEmpty()
+    }
+
+    private fun refreshDevice(device: Device) {
+        updateDevice(device.refreshed())
+    }
+
+    private suspend fun enrichAndAddDevice(stub: Device) {
+        scope.launch {
+            supervisorScope {
+                val enriched = httpClientDataSource
+                    .fetchDeviceDescription(stub.location)
+                    .getOrNull()
+                    ?.let { stub.enrichWithDescription(it) }
+                    ?: stub
+
+                updateDevice(enriched)
+                Log.d(TAG, "Discovered: ${enriched.displayName} (${enriched.serverType})")
             }
-            Log.d(TAG, "Discovered: ${enriched.displayName} (${enriched.serverType})")
+        }
+    }
+
+    private fun updateDevice(device: Device) {
+        synchronized(_devicesMap) {
+            _devicesMap[device.usn] = device
+            _devices.value = _devicesMap.toMap()
+        }
+    }
+
+    private fun removeDevice(usn: String) {
+        synchronized(_devicesMap) {
+            if (_devicesMap.remove(usn) != null) {
+                _devices.value = _devicesMap.toMap()
+            }
         }
     }
 }

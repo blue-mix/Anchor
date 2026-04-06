@@ -1,6 +1,8 @@
 package com.example.anchor.data.source.remote
 
 import android.util.Log
+import com.example.anchor.core.config.AnchorConfig
+import com.example.anchor.core.config.AnchorConstants
 import com.example.anchor.core.result.Result
 import com.example.anchor.core.result.resultOf
 import com.example.anchor.data.dto.DeviceDescriptionDto
@@ -13,47 +15,30 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
+import java.net.InetAddress
 import java.net.URL
 
 /**
  * Makes HTTP requests to remote Anchor servers discovered via SSDP.
- *
- * Uses [java.net.URL.readText] (simple, no extra dependency) on [Dispatchers.IO].
- * All methods return [Result] — callers never see raw exceptions.
- *
- * This class has no awareness of domain types; it speaks only DTOs.
- * [DeviceRepositoryImpl] and [RemoteBrowserViewModel] call this and let
- * their mappers convert the results.
  */
 class HttpClientDataSource(private val json: Json) {
 
     companion object {
         private const val TAG = "HttpClientDataSource"
-        private const val TIMEOUT_MS = 5_000L
     }
 
     // ── Anchor API ────────────────────────────────────────────
 
-    /**
-     * Fetches server info from GET /api/info on [baseUrl].
-     */
     suspend fun getServerInfo(baseUrl: String): Result<ServerInfoDto> =
         get("${baseUrl.trimEnd('/')}/api/info") { body ->
             json.decodeFromString(body)
         }
 
-    /**
-     * Fetches the list of shared directories from GET /api/directories.
-     */
     suspend fun getDirectories(baseUrl: String): Result<List<SharedDirectoryDto>> =
         get("${baseUrl.trimEnd('/')}/api/directories") { body ->
             json.decodeFromString(body)
         }
 
-    /**
-     * Browses a path on a remote Anchor server.
-     * [path] is the full path including alias, e.g. "/movies/Action".
-     */
     suspend fun browse(baseUrl: String, path: String): Result<DirectoryListingDto> {
         val apiPath = path.trimStart('/')
         return get("${baseUrl.trimEnd('/')}/api/browse/$apiPath") { body ->
@@ -61,9 +46,6 @@ class HttpClientDataSource(private val json: Json) {
         }
     }
 
-    /**
-     * Fetches metadata for a single file on a remote Anchor server.
-     */
     suspend fun getFile(baseUrl: String, path: String): Result<MediaFileDto> {
         val apiPath = path.trimStart('/')
         return get("${baseUrl.trimEnd('/')}/api/browse/$apiPath") { body ->
@@ -73,16 +55,14 @@ class HttpClientDataSource(private val json: Json) {
 
     // ── UPnP device description ───────────────────────────────
 
-    /**
-     * Fetches and parses the UPnP device-description XML at [locationUrl]
-     * (the LOCATION header value from an SSDP packet).
-     *
-     * Returns [Result.Error] when the request times out or XML cannot be parsed.
-     */
     suspend fun fetchDeviceDescription(locationUrl: String): Result<DeviceDescriptionDto> =
         withContext(Dispatchers.IO) {
             resultOf {
-                val xml = withTimeoutOrNull(TIMEOUT_MS) {
+                require(validateUrl(locationUrl)) {
+                    "Invalid or unsafe URL: $locationUrl"
+                }
+
+                val xml = withTimeoutOrNull(AnchorConfig.Server.TIMEOUT_MS) {
                     URL(locationUrl).readText()
                 } ?: throw IllegalStateException("Device description fetch timed out")
 
@@ -91,26 +71,31 @@ class HttpClientDataSource(private val json: Json) {
             }
         }
 
-    // ── URL helpers ───────────────────────────────────────────
+    // ── SSRF Validation ───────────────────────────────────────
 
-    /**
-     * Builds the stream URL for a file on [baseUrl].
-     * Use this URL to play media directly in ExoPlayer.
-     */
-    fun streamUrl(baseUrl: String, filePath: String): String =
-        "${baseUrl.trimEnd('/')}/stream/${filePath.trimStart('/')}"
+    private fun validateUrl(url: String): Boolean {
+        val parsed = try {
+            URL(url)
+        } catch (e: Exception) {
+            return false
+        }
 
-    /**
-     * Builds the direct-download URL for a file on [baseUrl].
-     */
-    fun fileUrl(baseUrl: String, filePath: String): String =
-        "${baseUrl.trimEnd('/')}/files/${filePath.trimStart('/')}"
+        if (parsed.protocol !in listOf("http", "https")) return false
 
-    /**
-     * Builds the thumbnail URL for a file on [baseUrl].
-     */
-    fun thumbnailUrl(baseUrl: String, filePath: String): String =
-        "${baseUrl.trimEnd('/')}/thumbnail/${filePath.trimStart('/')}"
+        val address = try {
+            InetAddress.getByName(parsed.host)
+        } catch (e: Exception) {
+            return false
+        }
+
+        if (address.isLoopbackAddress) return false
+        
+        val hostAddress = address.hostAddress ?: return false
+        if (hostAddress.startsWith("127.") || hostAddress.startsWith("169.254.")) return false
+
+        // Allow LAN ranges for UPnP discovery
+        return address.isSiteLocalAddress || !address.isLoopbackAddress
+    }
 
     // ── Generic GET ───────────────────────────────────────────
 
@@ -120,7 +105,7 @@ class HttpClientDataSource(private val json: Json) {
     ): Result<T> = withContext(Dispatchers.IO) {
         resultOf {
             Log.d(TAG, "GET $url")
-            val body = withTimeoutOrNull(TIMEOUT_MS) {
+            val body = withTimeoutOrNull(AnchorConfig.Server.TIMEOUT_MS) {
                 URL(url).readText()
             } ?: throw IllegalStateException("Request timed out: $url")
             parse(body)
@@ -129,18 +114,21 @@ class HttpClientDataSource(private val json: Json) {
 }
 
 // ── DeviceDescriptionParser ───────────────────────────────────
-// Kept here to avoid an extra file for a small, focused parser.
 
 private object DeviceDescriptionParser {
 
-    /**
-     * Parses UPnP device-description XML using Android's XmlPullParser.
-     * Returns null on any parse error.
-     */
     fun parseDeviceDescription(xml: String): DeviceDescriptionDto? {
         return try {
             val parser = android.util.Xml.newPullParser()
             parser.setFeature(org.xmlpull.v1.XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+            
+            // XXE Protection using constants
+            try {
+                parser.setFeature(AnchorConstants.Xml.FEATURE_EXTERNAL_GENERAL_ENTITIES, false)
+                parser.setFeature(AnchorConstants.Xml.FEATURE_EXTERNAL_PARAMETER_ENTITIES, false)
+                parser.setFeature(AnchorConstants.Xml.FEATURE_DISALLOW_DOCTYPE, true)
+            } catch (e: Exception) {}
+            
             parser.setInput(java.io.StringReader(xml))
 
             var friendlyName = ""
@@ -170,7 +158,6 @@ private object DeviceDescriptionParser {
                             }
                         }
                     }
-
                     org.xmlpull.v1.XmlPullParser.END_TAG -> currentTag = ""
                 }
                 eventType = parser.next()

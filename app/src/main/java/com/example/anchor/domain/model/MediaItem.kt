@@ -1,48 +1,60 @@
 package com.example.anchor.domain.model
 
+import com.example.anchor.core.util.MimeTypeUtils
+import java.io.File
 import java.net.URLEncoder
 
 /**
  * Domain model for a single file or directory in the shared media library.
- *
- * This is the canonical in-memory representation used by ViewModels and
- * use-cases. It is deliberately free of Android framework and serialisation
- * dependencies — those live in the data layer.
  */
 data class MediaItem(
-    /** Display name (last path component). */
     val name: String,
-
-    /**
-     * Path relative to the shared root, prefixed with the alias.
-     * Example: "/movies/Action/film.mp4"
-     */
-    val path: String,
-
-    /** Absolute filesystem path — used by the server to serve the file. */
+    val path: MediaPath,
     val absolutePath: String,
-
     val isDirectory: Boolean,
     val size: Long = 0L,
-    val mimeType: String = "",
+    val mimeType: MimeType = MimeType(""),
     val lastModified: Long = 0L,
     val mediaType: MediaType = MediaType.UNKNOWN
 ) {
+
+    companion object {
+        fun fromFile(file: File, baseDir: File, alias: Alias): MediaItem {
+            val relativePath = if (file == baseDir) ""
+            else file.relativeTo(baseDir).path.replace("\\", "/")
+
+            val mime = if (file.isDirectory) MimeType("") 
+                      else MimeType.fromFileName(file.name)
+            
+            val type = if (file.isDirectory) MediaType.UNKNOWN
+                      else MediaType.fromMimeType(mime.value)
+
+            return MediaItem(
+                name = file.name,
+                path = MediaPath.from(alias, relativePath),
+                absolutePath = file.absolutePath,
+                isDirectory = file.isDirectory,
+                size = if (file.isFile) file.length() else 0L,
+                mimeType = mime,
+                lastModified = file.lastModified(),
+                mediaType = type
+            )
+        }
+    }
 
     // ── Derived helpers ───────────────────────────────────────
 
     /**
      * URL-safe percent-encoded path for building HTTP request URLs.
-     * Each segment is encoded independently so slashes are preserved.
      */
     val encodedPath: String
-        get() = path.split("/").joinToString("/") { segment ->
-            URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
+        get() = path.value.split("/").joinToString("/") { segment ->
+            if (segment.isEmpty()) ""
+            else URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
         }
 
     /**
-     * Human-readable formatted file size (e.g. "4.5 MB").
-     * Returns an empty string for directories.
+     * Human-readable formatted file size.
      */
     val formattedSize: String
         get() = when {
@@ -53,28 +65,12 @@ data class MediaItem(
             else -> String.format("%.2f GB", size / 1_073_741_824.0)
         }
 
-    /**
-     * True when this item can be streamed by ExoPlayer (video or audio).
-     */
-    val isStreamable: Boolean
-        get() = mediaType == MediaType.VIDEO || mediaType == MediaType.AUDIO
-
-    /**
-     * True when this item has a displayable thumbnail.
-     */
-    val hasThumbnail: Boolean
-        get() = mediaType == MediaType.VIDEO ||
-                mediaType == MediaType.IMAGE ||
-                mediaType == MediaType.AUDIO
+    val isStreamable: Boolean get() = mediaType.isStreamable
+    val hasThumbnail: Boolean get() = mediaType.hasThumbnail
 }
 
 // ── MediaType ─────────────────────────────────────────────────
 
-/**
- * High-level media classification for a file.
- * Kept in the domain layer because ViewModels make decisions based on it
- * (e.g. which icon to show, whether to offer a stream URL).
- */
 enum class MediaType {
     VIDEO,
     AUDIO,
@@ -82,32 +78,15 @@ enum class MediaType {
     DOCUMENT,
     UNKNOWN;
 
-    companion object {
+    val isStreamable: Boolean get() = this == VIDEO || this == AUDIO
+    val hasThumbnail: Boolean get() = this == VIDEO || this == IMAGE || this == AUDIO
 
-        /** Infers the type from a MIME-type string. */
+    companion object {
         fun fromMimeType(mimeType: String): MediaType = when {
             mimeType.startsWith("video/") -> VIDEO
             mimeType.startsWith("audio/") -> AUDIO
             mimeType.startsWith("image/") -> IMAGE
-            mimeType.startsWith("application/pdf") -> DOCUMENT
-            mimeType.startsWith("text/") -> DOCUMENT
-            else -> UNKNOWN
-        }
-
-        /** Infers the type from a lowercase file extension. */
-        fun fromExtension(extension: String): MediaType = when (extension.lowercase()) {
-            "mp4", "mkv", "avi", "mov", "wmv", "flv",
-            "webm", "m4v", "3gp", "ts", "ogv", "divx" -> VIDEO
-
-            "mp3", "wav", "flac", "aac", "ogg", "m4a",
-            "wma", "opus", "aiff", "aif" -> AUDIO
-
-            "jpg", "jpeg", "png", "gif", "webp",
-            "bmp", "heic", "heif", "avif", "tiff" -> IMAGE
-
-            "pdf", "txt", "doc", "docx",
-            "xls", "xlsx", "csv", "md" -> DOCUMENT
-
+            mimeType.startsWith("application/pdf") || mimeType.startsWith("text/") -> DOCUMENT
             else -> UNKNOWN
         }
     }
@@ -115,23 +94,10 @@ enum class MediaType {
 
 // ── DirectoryListing ──────────────────────────────────────────
 
-/**
- * Result of browsing a directory: its contents plus navigation context.
- */
 data class DirectoryListing(
-    /**
-     * The canonical path of the browsed directory (e.g. "/movies/Action").
-     */
-    val path: String,
-
-    /**
-     * Path of the parent directory, or null when already at a shared root.
-     */
-    val parentPath: String?,
-
-    /** All non-hidden items inside this directory, sorted directories first. */
+    val path: MediaPath,
+    val parentPath: MediaPath?,
     val items: List<MediaItem>,
-
     val totalItems: Int,
     val totalSize: Long
 )

@@ -1,20 +1,16 @@
 package com.example.anchor.data.repository
 
 import com.example.anchor.core.result.Result
-import com.example.anchor.core.util.MimeTypeUtils
 import com.example.anchor.data.source.local.FileSystemDataSource
 import com.example.anchor.data.source.local.ThumbnailCache
 import com.example.anchor.domain.model.DirectoryListing
 import com.example.anchor.domain.model.MediaItem
+import com.example.anchor.domain.model.MediaType
 import com.example.anchor.domain.repository.MediaRepository
 import java.io.File
 
 /**
  * Concrete implementation of [MediaRepository].
- *
- * Delegates filesystem I/O to [FileSystemDataSource] and thumbnail
- * generation/caching to [ThumbnailCache].  Has no direct Android framework
- * imports of its own — all platform work lives in the data sources.
  */
 class MediaRepositoryImpl(
     private val fileSystemDataSource: FileSystemDataSource,
@@ -34,19 +30,15 @@ class MediaRepositoryImpl(
         fileSystemDataSource.getFile(baseDir, baseDir.name, relativePath)
 
     override suspend fun getThumbnail(file: File): Result<ByteArray> {
-        val mimeType = MimeTypeUtils.getMimeType(file.name)
-        return when {
-            MimeTypeUtils.isVideo(mimeType) ->
-                thumbnailCache.getVideoThumbnail(file.absolutePath)
-
-            MimeTypeUtils.isImage(mimeType) ->
-                thumbnailCache.getImageThumbnail(file.absolutePath)
-
-            MimeTypeUtils.isAudio(mimeType) ->
-                thumbnailCache.getAudioAlbumArt(file.absolutePath)
-
-            else ->
-                Result.Error("No thumbnail available for mime type: $mimeType")
+        val mediaType = MediaType.fromMimeType(
+            com.example.anchor.core.util.MimeTypeUtils.getMimeType(file.name)
+        )
+        
+        return when (mediaType) {
+            MediaType.VIDEO -> thumbnailCache.getVideoThumbnail(file.absolutePath)
+            MediaType.IMAGE -> thumbnailCache.getImageThumbnail(file.absolutePath)
+            MediaType.AUDIO -> thumbnailCache.getAudioAlbumArt(file.absolutePath)
+            else -> Result.Error("No thumbnail available for media type: $mediaType")
         }
     }
 

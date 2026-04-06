@@ -7,7 +7,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
-import com.example.anchor.ui.DiscoveryScreen
+import com.example.anchor.ui.discovery.DiscoveryScreen
 import com.example.anchor.ui.browser.RemoteBrowserScreen
 import com.example.anchor.ui.dashboard.DashboardScreen
 import com.example.anchor.ui.onboarding.OnboardingScreen

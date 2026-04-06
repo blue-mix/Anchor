@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.util.Log
 import android.util.LruCache
+import com.example.anchor.core.config.AnchorConfig
 import com.example.anchor.core.result.Result
 import com.example.anchor.core.result.resultOf
 import kotlinx.coroutines.Dispatchers
@@ -20,14 +21,13 @@ class ThumbnailCache(context: Context) {
 
     companion object {
         private const val TAG = "ThumbnailCache"
-        private const val THUMBNAIL_WIDTH = 320  // Increased from 320 for 720p previews
-        private const val THUMBNAIL_HEIGHT = 180  // Increased from 180
-        private const val JPEG_QUALITY = 90       // Increased from 80 for better clarity
-        private const val CACHE_SIZE_BYTES =
-            50 * 1024 * 1024   // Increased to 50 MB for larger thumbnails
     }
 
-    private val memoryCache = LruCache<String, ByteArray>(CACHE_SIZE_BYTES)
+    private val memoryCache = object : LruCache<String, ByteArray>(AnchorConfig.Thumbnails.CACHE_SIZE_BYTES.toInt()) {
+        override fun sizeOf(key: String, value: ByteArray): Int {
+            return value.size
+        }
+    }
 
     private val diskCacheDir: File =
         File(context.cacheDir, "thumbnails").also { it.mkdirs() }
@@ -104,7 +104,7 @@ class ThumbnailCache(context: Context) {
             val options = BitmapFactory.Options().apply {
                 inSampleSize = calculateSampleSize(
                     bounds.outWidth, bounds.outHeight,
-                    THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT
+                    AnchorConfig.Thumbnails.WIDTH, AnchorConfig.Thumbnails.HEIGHT
                 )
             }
             BitmapFactory.decodeFile(filePath, options)?.scaleAndCompress()
@@ -130,10 +130,10 @@ class ThumbnailCache(context: Context) {
     }
 
     private fun Bitmap.scaleAndCompress(): ByteArray {
-        val scaled = if (width > THUMBNAIL_WIDTH || height > THUMBNAIL_HEIGHT) {
+        val scaled = if (width > AnchorConfig.Thumbnails.WIDTH || height > AnchorConfig.Thumbnails.HEIGHT) {
             val ratio = minOf(
-                THUMBNAIL_WIDTH.toFloat() / width,
-                THUMBNAIL_HEIGHT.toFloat() / height
+                AnchorConfig.Thumbnails.WIDTH.toFloat() / width,
+                AnchorConfig.Thumbnails.HEIGHT.toFloat() / height
             )
             val newW = (width * ratio).toInt().coerceAtLeast(1)
             val newH = (height * ratio).toInt().coerceAtLeast(1)
@@ -144,7 +144,7 @@ class ThumbnailCache(context: Context) {
         }
 
         return ByteArrayOutputStream()
-            .also { scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
+            .also { scaled.compress(Bitmap.CompressFormat.JPEG, AnchorConfig.Thumbnails.JPEG_QUALITY, it) }
             .toByteArray()
             .also { scaled.recycle() }
     }

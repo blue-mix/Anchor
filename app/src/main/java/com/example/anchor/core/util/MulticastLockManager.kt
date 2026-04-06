@@ -24,13 +24,11 @@ class MulticastLockManager(context: Context) {
     companion object {
         private const val TAG = "MulticastLockManager"
         private const val LOCK_TAG = "AnchorMulticastLock"
-        private const val MAX_ACQUIRE_MS = 10L * 60L * 1000L   // 10 minutes
     }
 
     private val wifiManager: WifiManager =
         context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
 
-    @Volatile
     private var multicastLock: WifiManager.MulticastLock? = null
 
     @Volatile
@@ -48,8 +46,10 @@ class MulticastLockManager(context: Context) {
     fun acquire(): Boolean = synchronized(mutex) {
         try {
             if (multicastLock == null) {
+                // Disable reference counting in WifiManager and manage it manually
+                // to avoid confusion between Android's counting and our own.
                 multicastLock = wifiManager.createMulticastLock(LOCK_TAG).apply {
-                    setReferenceCounted(true)
+                    setReferenceCounted(false)
                 }
             }
             val lock = multicastLock ?: return false
@@ -71,12 +71,14 @@ class MulticastLockManager(context: Context) {
      */
     fun release() = synchronized(mutex) {
         try {
-            if (acquireCount > 0) acquireCount--
-            if (acquireCount == 0) {
-                multicastLock?.let { lock ->
-                    if (lock.isHeld) {
-                        lock.release()
-                        Log.d(TAG, "Multicast lock released")
+            if (acquireCount > 0) {
+                acquireCount--
+                if (acquireCount == 0) {
+                    multicastLock?.let { lock ->
+                        if (lock.isHeld) {
+                            lock.release()
+                            Log.d(TAG, "Multicast lock released")
+                        }
                     }
                 }
             }

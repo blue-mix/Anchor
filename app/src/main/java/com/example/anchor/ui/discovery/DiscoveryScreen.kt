@@ -1,4 +1,4 @@
-package com.example.anchor.ui
+package com.example.anchor.ui.discovery
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn

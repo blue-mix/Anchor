@@ -1,5 +1,3 @@
-// app/src/main/java/com/example/anchor/server/MediaFile.kt
-
 package com.example.anchor.data.model
 
 import kotlinx.serialization.Serializable

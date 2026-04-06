@@ -1,5 +1,3 @@
-// app/src/main/java/com/example/anchor/discovery/SsdpMessage.kt
-
 package com.example.anchor.data.model
 
 /**

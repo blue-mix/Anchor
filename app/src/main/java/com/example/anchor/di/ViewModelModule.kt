@@ -11,7 +11,7 @@ import com.example.anchor.domain.usecase.media.StreamMediaUseCase
 import com.example.anchor.domain.usecase.server.AddSharedDirectoryUseCase
 import com.example.anchor.domain.usecase.server.StartServerUseCase
 import com.example.anchor.domain.usecase.server.StopServerUseCase
-import com.example.anchor.ui.DiscoveryViewModel
+import com.example.anchor.ui.discovery.DiscoveryViewModel
 import com.example.anchor.ui.browser.RemoteBrowserViewModel
 import com.example.anchor.ui.dashboard.DashboardViewModel
 import com.example.anchor.ui.onboarding.OnboardingViewModel
@@ -39,7 +39,7 @@ val viewModelModule = module {
 
     // ── ViewModels ────────────────────────────────────────────
     viewModel { DiscoveryViewModel(get(), get(), get()) }
-    viewModel { DashboardViewModel(get()) }
+    viewModel { DashboardViewModel(get(),get()) }
     viewModel { RemoteBrowserViewModel() }
     viewModel { OnboardingViewModel(get()) }
     viewModel { PlayerViewModel(get()) }

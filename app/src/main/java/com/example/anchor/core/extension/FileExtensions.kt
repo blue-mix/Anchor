@@ -1,29 +1,6 @@
 package com.example.anchor.core.extension
 
 import java.io.File
-import java.text.DecimalFormat
-
-// ── Size formatting ───────────────────────────────────────────
-
-private val SIZE_FORMAT = DecimalFormat("#.##")
-
-/**
- * Returns a human-readable file size string.
- * Examples: "512 B", "4.5 KB", "1.2 MB", "3.76 GB"
- */
-fun File.formattedSize(): String = length().formattedSize()
-
-/**
- * Formats a raw byte count as a human-readable size string.
- */
-fun Long.formattedSize(): String = when {
-    this < 1_024L -> "$this B"
-    this < 1_048_576L -> "${SIZE_FORMAT.format(this / 1_024.0)} KB"
-    this < 1_073_741_824L -> "${SIZE_FORMAT.format(this / 1_048_576.0)} MB"
-    else -> "${SIZE_FORMAT.format(this / 1_073_741_824.0)} GB"
-}
-
-// ── Path helpers ──────────────────────────────────────────────
 
 /**
  * Returns the file extension in lowercase, or an empty string if the file
@@ -51,7 +28,7 @@ fun File.isDescendantOf(ancestor: File): Boolean =
 
 /**
  * Returns the total size of all regular files under this directory,
- * or [length] if this is a regular file.
+ * or length if this is a regular file.
  */
 fun File.totalSize(): Long =
     if (isFile) length()

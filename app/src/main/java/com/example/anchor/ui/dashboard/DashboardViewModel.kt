@@ -11,7 +11,7 @@ import com.example.anchor.core.util.NetworkUtils
 import com.example.anchor.domain.model.ServerConfig
 import com.example.anchor.domain.model.ServerStatus
 import com.example.anchor.domain.model.SharedDirectory
-import com.example.anchor.server.service.AnchorServerService
+import com.example.anchor.server.ServerController
 import com.example.anchor.server.service.AnchorServiceState
 import com.example.anchor.server.service.LogEntry
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,19 +39,11 @@ data class SharedFolder(
 
 /**
  * ViewModel for the server dashboard screen.
- *
- * Changes from original:
- *  - [DashboardUiState.serverState] (old flat ServerState) replaced by
- *    [DashboardUiState.serverStatus] using domain [ServerStatus] sealed interface.
- *  - [AnchorServiceState.state] (removed) replaced by [AnchorServiceState.status].
- *  - [LogEntry] imported from [server.service] (where it now lives).
- *  - [AnchorServerService] imported from [server.service] package.
- *  - [startServer] builds a proper [ServerConfig] with [SharedDirectory] values
- *    instead of passing raw path lists.
- *  - [SharedFolder.path] renamed to [SharedFolder.absolutePath] for clarity.
- *  - Still extends [AndroidViewModel] — SAF (DocumentFile) requires a Context.
  */
-class DashboardViewModel(application: Application) : AndroidViewModel(application) {
+class DashboardViewModel(
+    application: Application,
+    private val serverController: ServerController
+) : AndroidViewModel(application) {
 
     companion object {
         private const val TAG = "DashboardViewModel"
@@ -78,9 +70,6 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         )
     }.stateIn(
         scope = viewModelScope,
-        // Eagerly: the flow never stops collecting even when no UI is subscribed.
-        // This ensures AnchorServiceState.status updates from the background
-        // service thread are never missed between recompositions.
         started = SharingStarted.Eagerly,
         initialValue = DashboardUiState()
     )
@@ -90,7 +79,6 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     fun addFolder(uri: Uri) {
         val context = getApplication<Application>()
 
-        // Take persistable SAF permission
         runCatching {
             context.contentResolver.takePersistableUriPermission(
                 uri,
@@ -130,35 +118,36 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     // ── Server control ────────────────────────────────────────
 
     fun startServer() {
-        val context = getApplication<Application>()
         val port = _selectedPort.value
         val folders = _sharedFolders.value
 
-        // Collect every path we can resolve. For SAF URIs where the path
-        // cannot be converted to a filesystem path, we still log it so the
-        // user knows which folders were skipped.
-        val directories = ArrayList<String>()
-        folders.forEach { folder ->
+        val sharedDirsMap = folders.mapNotNull { folder ->
             val path = resolveAbsolutePath(folder.uri)
             if (path != null) {
-                directories.add(path)
-                Log.d(TAG, "Resolved folder: ${folder.name} → $path")
+                val alias = folder.name.lowercase().replace(" ", "_")
+                alias to SharedDirectory(
+                    alias = alias,
+                    displayName = folder.name,
+                    absolutePath = path,
+                    fileCount = folder.fileCount
+                )
             } else {
-                // SAF URI that cannot be converted — log it but don't block startup
-                Log.w(TAG, "Could not resolve path for ${folder.name} (${folder.uri})")
+                Log.w(TAG, "Could not resolve path for ${folder.name}")
                 AnchorServiceState.addLog("Warning: cannot resolve path for ${folder.name}")
+                null
             }
-        }
+        }.toMap()
 
-        AnchorServerService.startServer(
-            context = context,
+        val config = ServerConfig(
             port = port,
-            directories = directories
+            sharedDirectories = sharedDirsMap
         )
+
+        serverController.start(config)
     }
 
     fun stopServer() {
-        AnchorServerService.stopServer(getApplication())
+        serverController.stop()
     }
 
     fun clearLogs() {
@@ -167,26 +156,17 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     // ── Helpers ───────────────────────────────────────────────
 
-    /**
-     * Converts a content:// or file:// URI string to an absolute filesystem path.
-     * This is a best-effort approach for the common SAF path format.
-     * Returns null when the path cannot be resolved.
-     */
     private fun resolveAbsolutePath(uriString: String): String? {
         return try {
             val uri = Uri.parse(uriString)
             when (uri.scheme) {
                 "file" -> uri.path
                 "content" -> {
-                    val segments = uri.pathSegments
-                    if (segments.isNotEmpty()) {
-                        val last = segments.last()
-                        if (last.contains(":")) {
-                            "/storage/emulated/0/${last.substringAfter(":")}"
-                        } else null
+                    val last = uri.pathSegments.lastOrNull()
+                    if (last?.contains(":") == true) {
+                        "/storage/emulated/0/${last.substringAfter(":")}"
                     } else null
                 }
-
                 else -> null
             }
         } catch (e: Exception) {

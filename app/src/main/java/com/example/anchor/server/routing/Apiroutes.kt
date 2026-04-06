@@ -6,18 +6,11 @@ import io.ktor.server.application.Application
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
-import java.io.File
 
 /**
  * Registers info and directory-listing API routes.
- *
- * GET /             → server metadata
- * GET /api/info     → same as /
- * GET /api/directories → list of shared alias → name → path
- * GET /api/browse/ → directory / file listing via [BrowseHandler]
  */
 fun Application.apiRoutes(
-    sharedDirectories: Map<String, File>,
     browseHandler: BrowseHandler,
     buildServerInfo: () -> ServerInfoDto
 ) {
@@ -29,10 +22,10 @@ fun Application.apiRoutes(
             call.respond(buildServerInfo())
         }
         get("/api/directories") {
-            browseHandler.handleListDirectories(call, sharedDirectories)
+            browseHandler.handleListDirectories(call)
         }
         get("/api/browse/{alias}/{path...}") {
-            browseHandler.handleBrowse(call, sharedDirectories)
+            browseHandler.handleBrowse(call)
         }
     }
 }

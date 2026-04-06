@@ -26,6 +26,16 @@ object DeviceDescriptionParser {
         return try {
             val parser = Xml.newPullParser()
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+            
+            // Disable external entities to prevent XXE if supported by the implementation
+            try {
+                parser.setFeature("http://xml.org/sax/features/external-general-entities", false)
+                parser.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+                parser.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+            } catch (e: Exception) {
+                // Some features might not be supported by all XmlPullParser implementations
+            }
+            
             parser.setInput(StringReader(xml))
 
             var friendlyName = ""

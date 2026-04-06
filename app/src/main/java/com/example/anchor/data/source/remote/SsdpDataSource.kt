@@ -1,10 +1,12 @@
 package com.example.anchor.data.source.remote
 
 import android.util.Log
+import com.example.anchor.core.config.AnchorConfig
 import com.example.anchor.data.dto.SsdpMessageDto
 import com.example.anchor.data.dto.SsdpMessageType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.isActive
@@ -29,12 +31,8 @@ class SsdpDataSource {
 
     companion object {
         private const val TAG = "SsdpDataSource"
-        const val SSDP_ADDRESS = "239.255.255.250"
-        const val SSDP_PORT = 1900
         private const val BUFFER_SIZE = 8_192
-        private const val SOCKET_TIMEOUT = 3_000          // ms — receive timeout
         private const val SEARCH_TIMEOUT = 3_000L         // ms — wait for M-SEARCH replies
-        private const val RESPONSE_WINDOW = 3_000L         // ms — window to collect responses
     }
 
     // ── Multicast listener ────────────────────────────────────
@@ -45,21 +43,18 @@ class SsdpDataSource {
      *
      * The socket is opened when collection starts and closed when the flow
      * is cancelled (collector leaves the scope).
-     *
-     * Designed to be collected inside a [kotlinx.coroutines.CoroutineScope]
-     * managed by the caller — typically [UpnpDiscoveryManager].
      */
     fun multicastMessages(): Flow<Pair<SsdpMessageDto, String>> = callbackFlow {
         var socket: MulticastSocket? = null
         try {
-            val group = InetAddress.getByName(SSDP_ADDRESS)
-            socket = MulticastSocket(SSDP_PORT).apply {
+            socket = MulticastSocket(AnchorConfig.Discovery.SSDP_PORT).apply {
                 reuseAddress = true
-                soTimeout = SOCKET_TIMEOUT
+                soTimeout = AnchorConfig.Discovery.SOCKET_TIMEOUT_MS
+                val group = InetAddress.getByName(AnchorConfig.Discovery.SSDP_ADDRESS)
                 joinAllInterfaces(group, this)
             }
 
-            Log.d(TAG, "Multicast listener started on $SSDP_ADDRESS:$SSDP_PORT")
+            Log.d(TAG, "Multicast listener started on ${AnchorConfig.Discovery.SSDP_ADDRESS}:${AnchorConfig.Discovery.SSDP_PORT}")
 
             val buffer = ByteArray(BUFFER_SIZE)
             while (isActive) {
@@ -67,11 +62,11 @@ class SsdpDataSource {
                     val packet = DatagramPacket(buffer, buffer.size)
                     socket.receive(packet)
 
-                    val msg = SsdpMessageDto.parse(packet.data.copyOf(packet.length))
-                    if (msg != null) {
-                        val srcIp = packet.address?.hostAddress ?: ""
-                        trySend(msg to srcIp)
-                    }
+                    SsdpMessageDto.parse(packet.data.copyOf(packet.length))
+                        .onSuccess { msg ->
+                            val srcIp = packet.address?.hostAddress ?: ""
+                            trySend(msg to srcIp)
+                        }
                 } catch (_: SocketTimeoutException) {
                     // Normal — keep listening
                 } catch (e: CancellationException) {
@@ -84,13 +79,15 @@ class SsdpDataSource {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Multicast listener failed", e)
-            close(e)
+            throw e // Let callbackFlow handle it
         } finally {
             socket?.close()
             Log.d(TAG, "Multicast listener closed")
         }
-        // callbackFlow must call awaitClose when the producer is event-driven;
-        // here the while-loop drives it, so close() above is sufficient.
+        
+        awaitClose {
+            socket?.close()
+        }
     }
 
     // ── M-SEARCH ──────────────────────────────────────────────
@@ -110,12 +107,12 @@ class SsdpDataSource {
         try {
             socket = DatagramSocket().apply {
                 broadcast = true
-                soTimeout = SOCKET_TIMEOUT
+                soTimeout = AnchorConfig.Discovery.SOCKET_TIMEOUT_MS
             }
 
             val message = SsdpMessageDto.buildMSearch(searchTarget)
-            val address = InetAddress.getByName(SSDP_ADDRESS)
-            socket.send(DatagramPacket(message, message.size, address, SSDP_PORT))
+            val address = InetAddress.getByName(AnchorConfig.Discovery.SSDP_ADDRESS)
+            socket.send(DatagramPacket(message, message.size, address, AnchorConfig.Discovery.SSDP_PORT))
             Log.d(TAG, "M-SEARCH sent for: $searchTarget")
 
             val buffer = ByteArray(BUFFER_SIZE)
@@ -126,11 +123,13 @@ class SsdpDataSource {
                     val packet = DatagramPacket(buffer, buffer.size)
                     socket.receive(packet)
 
-                    val msg = SsdpMessageDto.parse(buffer.copyOf(packet.length))
-                    if (msg != null && msg.type == SsdpMessageType.RESPONSE) {
-                        val srcIp = packet.address?.hostAddress ?: ""
-                        results.add(msg to srcIp)
-                    }
+                    SsdpMessageDto.parse(buffer.copyOf(packet.length))
+                        .onSuccess { msg ->
+                            if (msg.type == SsdpMessageType.RESPONSE) {
+                                val srcIp = packet.address?.hostAddress ?: ""
+                                results.add(msg to srcIp)
+                            }
+                        }
                 } catch (_: SocketTimeoutException) {
                     // Keep collecting until deadline
                 }
@@ -156,8 +155,8 @@ class SsdpDataSource {
         try {
             socket = DatagramSocket().apply { broadcast = true }
             val data = message.toByteArray(Charsets.UTF_8)
-            val address = InetAddress.getByName(SSDP_ADDRESS)
-            socket.send(DatagramPacket(data, data.size, address, SSDP_PORT))
+            val address = InetAddress.getByName(AnchorConfig.Discovery.SSDP_ADDRESS)
+            socket.send(DatagramPacket(data, data.size, address, AnchorConfig.Discovery.SSDP_PORT))
         } catch (e: Exception) {
             Log.w(TAG, "NOTIFY send failed", e)
         } finally {
@@ -196,20 +195,20 @@ class SsdpDataSource {
             val interfaces = NetworkInterface.getNetworkInterfaces()
             var joined = false
             while (interfaces.hasMoreElements()) {
-                val ni = interfaces.nextElement()
-                if (ni.isUp && !ni.isLoopback && ni.supportsMulticast()) {
+                val networkInterface = interfaces.nextElement()
+                if (networkInterface.isUp && !networkInterface.isLoopback && networkInterface.supportsMulticast()) {
                     runCatching {
-                        socket.joinGroup(InetSocketAddress(group, SSDP_PORT), ni)
+                        socket.joinGroup(InetSocketAddress(group, AnchorConfig.Discovery.SSDP_PORT), networkInterface)
                         joined = true
-                        Log.d(TAG, "Joined multicast on ${ni.name}")
+                        Log.d(TAG, "Joined multicast on ${networkInterface.name}")
                     }
                 }
             }
             if (!joined) {
-                socket.joinGroup(InetSocketAddress(group, SSDP_PORT), null)
+                socket.joinGroup(InetSocketAddress(group, AnchorConfig.Discovery.SSDP_PORT), null)
             }
         } catch (e: Exception) {
-            runCatching { socket.joinGroup(InetSocketAddress(group, SSDP_PORT), null) }
+            runCatching { socket.joinGroup(InetSocketAddress(group, AnchorConfig.Discovery.SSDP_PORT), null) }
         }
     }
 }

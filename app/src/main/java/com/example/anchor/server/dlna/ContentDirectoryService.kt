@@ -14,6 +14,9 @@ class ContentDirectoryService(private val serverBaseUrl: String) {
 
     companion object {
         private const val TAG = "ContentDirectoryService"
+        
+        private const val ROOT_ID = "0"
+        private const val DIR_PREFIX = "dir:"
     }
 
     private var sharedDirectories: Map<String, File> = emptyMap()
@@ -26,10 +29,7 @@ class ContentDirectoryService(private val serverBaseUrl: String) {
     }
 
     fun getSystemUpdateId(): Int = systemUpdateId
-    fun incrementUpdateId() {
-        systemUpdateId++
-    }
-
+    
     fun handleBrowse(
         objectId: String,
         browseFlag: String,
@@ -37,48 +37,40 @@ class ContentDirectoryService(private val serverBaseUrl: String) {
         startingIndex: Int,
         requestedCount: Int,
         sortCriteria: String
-    ): BrowseResult {
-        return try {
-            when {
-                objectId == "0" -> browseRoot(startingIndex, requestedCount)
-                objectId.startsWith("dir:") -> browseDirectory(
-                    objectId,
-                    startingIndex,
-                    requestedCount
-                )
-
-                else -> {
-                    Log.w(TAG, "Unknown objectId: $objectId")
-                    BrowseResult(wrapDidl(""), 0, 0, systemUpdateId)
-                }
+    ): BrowseResult = try {
+        when {
+            objectId == ROOT_ID -> browseRoot(startingIndex, requestedCount)
+            objectId.startsWith(DIR_PREFIX) -> browseDirectory(objectId, startingIndex, requestedCount)
+            else -> {
+                Log.w(TAG, "Unknown objectId: $objectId")
+                BrowseResult(wrapDidl(""), 0, 0, systemUpdateId)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Browse failed", e)
-            BrowseResult(wrapDidl(""), 0, 0, systemUpdateId)
         }
+    } catch (e: Exception) {
+        Log.e(TAG, "Browse failed", e)
+        BrowseResult(wrapDidl(""), 0, 0, systemUpdateId)
     }
 
     private fun browseRoot(startingIndex: Int, requestedCount: Int): BrowseResult {
         val entries = sharedDirectories.entries.toList()
-        val count = if (requestedCount == 0) entries.size else requestedCount
-        val end = minOf(startingIndex + count, entries.size)
+        val total = entries.size
+        val count = if (requestedCount <= 0) total else requestedCount
+        val end = minOf(startingIndex + count, total)
 
         val items = buildString {
             for (i in startingIndex until end) {
                 val (alias, dir) = entries[i]
                 val childCount = dir.listFiles()?.count { !it.name.startsWith(".") } ?: 0
-                append(
-                    containerDidl(
-                        id = "dir:$alias",
-                        parentId = "0",
-                        title = dir.name,
-                        childCount = childCount
-                    )
-                )
+                append(containerDidl(
+                    id = "$DIR_PREFIX$alias",
+                    parentId = ROOT_ID,
+                    title = dir.name,
+                    childCount = childCount
+                ))
             }
         }
 
-        return BrowseResult(wrapDidl(items), end - startingIndex, entries.size, systemUpdateId)
+        return BrowseResult(wrapDidl(items), end - startingIndex, total, systemUpdateId)
     }
 
     private fun browseDirectory(
@@ -86,57 +78,41 @@ class ContentDirectoryService(private val serverBaseUrl: String) {
         startingIndex: Int,
         requestedCount: Int
     ): BrowseResult {
-        val path = objectId.removePrefix("dir:")
+        val path = objectId.removePrefix(DIR_PREFIX)
         val parts = path.split("/", limit = 2)
         val alias = parts[0]
-        val relativePath = if (parts.size > 1) parts[1] else ""
+        val relativePath = parts.getOrNull(1) ?: ""
 
-        val baseDir = sharedDirectories[alias]
-            ?: run {
-                Log.e(TAG, "Alias not found: $alias")
-                return BrowseResult(wrapDidl(""), 0, 0, systemUpdateId)
-            }
-
+        val baseDir = sharedDirectories[alias] ?: return BrowseResult(wrapDidl(""), 0, 0, systemUpdateId)
         val targetDir = if (relativePath.isEmpty()) baseDir else File(baseDir, relativePath)
 
         if (!targetDir.exists() || !targetDir.isDirectory) {
-            Log.e(TAG, "Directory missing: ${targetDir.absolutePath}")
             return BrowseResult(wrapDidl(""), 0, 0, systemUpdateId)
         }
 
         val listing = filesToDirectoryListing(baseDir, alias, targetDir)
         val allItems = listing.items
-
-        val count = if (requestedCount == 0) allItems.size else requestedCount
-        val end = minOf(startingIndex + count, allItems.size)
+        val total = allItems.size
+        val count = if (requestedCount <= 0) total else requestedCount
+        val end = minOf(startingIndex + count, total)
 
         val didlItems = buildString {
             for (i in startingIndex until end) {
                 val item = allItems[i]
-                val itemId = "dir:${item.path.removePrefix("/")}"
+                val itemId = "$DIR_PREFIX${item.path.value.removePrefix("/")}"
                 if (item.isDirectory) {
-                    val childCount = File(item.absolutePath)
-                        .listFiles()?.count { !it.name.startsWith(".") } ?: 0
-                    append(
-                        containerDidl(
-                            id = itemId,
-                            parentId = objectId,
-                            title = item.name,
-                            childCount = childCount
-                        )
-                    )
+                    val childCount = File(item.absolutePath).listFiles()?.count { !it.name.startsWith(".") } ?: 0
+                    append(containerDidl(itemId, objectId, item.name, childCount))
                 } else {
                     append(itemDidl(item, objectId, itemId))
                 }
             }
         }
 
-        return BrowseResult(wrapDidl(didlItems), end - startingIndex, allItems.size, systemUpdateId)
+        return BrowseResult(wrapDidl(didlItems), end - startingIndex, total, systemUpdateId)
     }
 
-    private fun containerDidl(
-        id: String, parentId: String, title: String, childCount: Int
-    ) =
+    private fun containerDidl(id: String, parentId: String, title: String, childCount: Int) =
         """<container id="${escXml(id)}" parentID="${escXml(parentId)}" restricted="1" searchable="0" childCount="$childCount">
 <dc:title>${escXml(title)}</dc:title>
 <upnp:class>object.container.storageFolder</upnp:class>
@@ -150,21 +126,16 @@ class ContentDirectoryService(private val serverBaseUrl: String) {
             else -> "object.item"
         }
 
-        val encodedPath = item.path.split("/").joinToString("/") { seg ->
-            if (seg.isEmpty()) ""
-            else URLEncoder.encode(seg, "UTF-8").replace("+", "%20")
-        }.trimStart('/')
-        val fileUrl = "$serverBaseUrl/files/$encodedPath"
+        val fileUrl = "$serverBaseUrl/files/${item.encodedPath.trimStart('/')}"
 
-        // Dynamic DLNA Profile Name (PN) based on file extension/MIME
-        val dlnaPn = when {
-            item.mimeType == "video/mp4" -> "AVC_MP4_MP_SD_AAC_MULTICHANNEL"
-            item.mimeType == "video/x-matroska" -> "MATROSKA"
-            item.mimeType == "video/mpeg" -> "MPEG_PS_PAL"
-            item.mimeType == "audio/mpeg" -> "MP3"
-            item.mimeType == "audio/wav" -> "LPCM"
-            item.mimeType == "image/jpeg" -> "JPEG_LRG"
-            item.mimeType == "image/png" -> "PNG_LRG"
+        val dlnaPn = when (item.mimeType.value) {
+            "video/mp4" -> "AVC_MP4_MP_SD_AAC_MULTICHANNEL"
+            "video/x-matroska" -> "MATROSKA"
+            "video/mpeg" -> "MPEG_PS_PAL"
+            "audio/mpeg" -> "MP3"
+            "audio/wav" -> "LPCM"
+            "image/jpeg" -> "JPEG_LRG"
+            "image/png" -> "PNG_LRG"
             else -> null
         }
 
@@ -174,7 +145,7 @@ class ContentDirectoryService(private val serverBaseUrl: String) {
             "DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
         }
 
-        val protocolInfo = "http-get:*:${item.mimeType}:$dlnaFeatures"
+        val protocolInfo = "http-get:*:${item.mimeType.value}:$dlnaFeatures"
 
         return """<item id="${escXml(itemId)}" parentID="${escXml(parentId)}" restricted="1">
 <dc:title>${escXml(item.name.substringBeforeLast('.'))}</dc:title>
@@ -183,11 +154,15 @@ class ContentDirectoryService(private val serverBaseUrl: String) {
 </item>"""
     }
 
-    private fun wrapDidl(items: String) =
-        """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" """ +
-                """xmlns:dc="http://purl.org/dc/elements/1.1/" """ +
-                """xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" """ +
-                """xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/">$items</DIDL-Lite>"""
+    private fun wrapDidl(items: String): String = buildString {
+        append("<DIDL-Lite ")
+        append("xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\" ")
+        append("xmlns:dc=\"http://purl.org/dc/elements/1.1/\" ")
+        append("xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\" ")
+        append("xmlns:dlna=\"urn:schemas-dlna-org:metadata-1-0/\">")
+        append(items)
+        append("</DIDL-Lite>")
+    }
 
     private fun escXml(s: String) = s
         .replace("&", "&amp;")

@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 /**
  * Wire representation of a file or directory returned by GET /api/browse/.
  *
- * Mirrors the JSON produced by [AnchorHttpServer]'s browse endpoint.
+ * Mirrors the JSON produced by AnchorHttpServer's browse endpoint.
  * All optional fields use explicit defaults so older server versions that
  * omit them don't break deserialization.
  */

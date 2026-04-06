@@ -1,8 +1,8 @@
 package com.example.anchor.server.handler
 
 import android.util.Log
+import com.example.anchor.server.DlnaManager
 import com.example.anchor.server.dlna.ContentDirectoryService
-import com.example.anchor.server.dlna.DlnaDescriptionGenerator
 import io.ktor.http.ContentType
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveText
@@ -10,25 +10,21 @@ import io.ktor.server.response.respondText
 
 /**
  * Handles all DLNA/UPnP SOAP endpoints.
- *
- * Changes from Phase 2:
- *  - [DlnaDescriptionHandler] renamed to [DlnaDescriptionGenerator];
- *    import updated accordingly.
- *  - Moved to server.handler package (was already there logically).
- *  - Everything else unchanged.
  */
-class SoapHandler(
-    private val dlnaGenerator: DlnaDescriptionGenerator,
-    private val contentDirectory: ContentDirectoryService
-) {
+class SoapHandler(private val dlnaManager: DlnaManager) {
     companion object {
         private const val TAG = "SoapHandler"
     }
 
     suspend fun handleContentDirectory(call: ApplicationCall) {
+        val contentDirectory = dlnaManager.getContentDirectory() ?: run {
+            call.respondText(fault("Service not ready"), ContentType.Text.Xml)
+            return
+        }
+
         val soap = call.receiveText()
         val response = when {
-            soap.contains("Browse", ignoreCase = true) -> handleBrowse(soap)
+            soap.contains("Browse", ignoreCase = true) -> handleBrowse(soap, contentDirectory)
             soap.contains("GetSystemUpdateID", ignoreCase = true) ->
                 systemUpdateIdResponse(contentDirectory.getSystemUpdateId())
 
@@ -47,6 +43,11 @@ class SoapHandler(
     }
 
     suspend fun handleConnectionManager(call: ApplicationCall) {
+        val dlnaGenerator = dlnaManager.getGenerator() ?: run {
+            call.respondText(fault("Service not ready"), ContentType.Text.Xml)
+            return
+        }
+
         val soap = call.receiveText()
         val response = when {
             soap.contains("GetProtocolInfo", ignoreCase = true) ->
@@ -62,7 +63,7 @@ class SoapHandler(
 
     // ── SOAP parsing ──────────────────────────────────────────
 
-    private fun handleBrowse(soap: String): String {
+    private fun handleBrowse(soap: String, contentDirectory: ContentDirectoryService): String {
         val objectId = extractValue(soap, "ObjectID") ?: "0"
         val browseFlag = extractValue(soap, "BrowseFlag") ?: "BrowseDirectChildren"
         val filter = extractValue(soap, "Filter") ?: "*"

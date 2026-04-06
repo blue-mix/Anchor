@@ -3,6 +3,9 @@ plugins {
     alias(libs.plugins.kotlin.compose) // This now handles the Compose Compiler
     alias(libs.plugins.kotlin.serialization)
 }
+val versionMajor = project.property("VERSION_MAJOR").toString().toInt()
+val versionMinor = project.property("VERSION_MINOR").toString().toInt()
+val versionPatch = project.property("VERSION_PATCH").toString().toInt()
 
 android {
     namespace = "com.example.anchor"
@@ -12,8 +15,8 @@ android {
         applicationId = "com.example.anchor"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = versionMajor * 10000 + versionMinor * 100 + versionPatch
+        versionName = "$versionMajor.$versionMinor.$versionPatch"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -79,7 +82,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.service)
-
+    implementation(libs.compose.material3.adaptive.navigation)
+    implementation(libs.compose.material3.adaptive.layout)
     // ── Koin DI ────────────────────────────────────────────────
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)

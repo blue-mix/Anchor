@@ -37,7 +37,7 @@ import java.net.URL
  * 2. Send M-SEARCH requests and process responses
  */
 class UpnpDiscoveryManager(
-    private val context: Context
+    context: Context
 ) {
     companion object {
         private const val TAG = "UpnpDiscoveryManager"

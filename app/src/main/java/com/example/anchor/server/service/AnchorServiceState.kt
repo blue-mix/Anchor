@@ -1,8 +1,6 @@
 package com.example.anchor.server.service
 
 import com.example.anchor.domain.model.ServerStatus
-import com.example.anchor.server.service.AnchorServiceState.logs
-import com.example.anchor.server.service.AnchorServiceState.status
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,6 +45,16 @@ object AnchorServiceState {
     }
 
     fun setRunning(ipAddress: String, port: Int) {
+        val currentStatus = _status.value
+        if (currentStatus is ServerStatus.Running) {
+            addLog("Server already running, ignoring duplicate start", LogLevel.WARNING)
+            return
+        }
+        
+        require(currentStatus is ServerStatus.Starting) {
+            "Cannot transition to Running from $currentStatus"
+        }
+        
         _status.value = ServerStatus.Running(ipAddress, port)
         addLog("Server running at http://$ipAddress:$port")
     }

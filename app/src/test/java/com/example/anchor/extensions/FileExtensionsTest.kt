@@ -2,7 +2,6 @@ package com.example.anchor.extensions
 
 import com.example.anchor.core.extension.ensureDirectories
 import com.example.anchor.core.extension.extension
-import com.example.anchor.core.extension.formattedSize
 import com.example.anchor.core.extension.isDescendantOf
 import com.example.anchor.core.extension.nameWithoutExtension
 import com.example.anchor.core.extension.shallowFileCount

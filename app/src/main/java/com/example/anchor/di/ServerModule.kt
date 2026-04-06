@@ -7,9 +7,16 @@ import com.example.anchor.domain.repository.DeviceRepository
 import com.example.anchor.domain.repository.MediaRepository
 import com.example.anchor.domain.repository.ServerRepository
 import com.example.anchor.server.AnchorHttpServer
+import com.example.anchor.server.DlnaManager
+import com.example.anchor.server.PathResolver
+import com.example.anchor.server.RouteHandlers
+import com.example.anchor.server.RouteProvider
+import com.example.anchor.server.ServerInfoBuilder
+import com.example.anchor.server.SharedDirectoryManager
 import com.example.anchor.server.UpnpDiscoveryManager
 import com.example.anchor.server.handler.BrowseHandler
 import com.example.anchor.server.handler.FileHandler
+import com.example.anchor.server.handler.SoapHandler
 import com.example.anchor.server.handler.ThumbnailHandler
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.qualifier.named
@@ -25,20 +32,54 @@ val serverModule = module {
     
     single { UpnpDiscoveryManager(androidContext()) }
 
+    // ── Managers ─────────────────────────────────────────────
+    
+    single { SharedDirectoryManager() }
+    single { 
+        DlnaManager(
+            context = androidContext(),
+            directoryManager = get()
+        )
+    }
+    single { ServerInfoBuilder(get()) }
+    single { PathResolver(get()) }
+
     // ── Handlers ──────────────────────────────────────────────
     
-    single { FileHandler() }
-    single { BrowseHandler(get()) }
-    single { ThumbnailHandler(get()) }
+    single { FileHandler(get()) }
+    single { BrowseHandler(get(), get(),get()) }
+    single { ThumbnailHandler(get(), get()) }
+    single { SoapHandler(get()) }
+    
+    single { 
+        RouteHandlers(
+            browse = get(),
+            file = get(),
+            thumbnail = get(),
+            soap = get()
+        )
+    }
+
+    // ── Routing ───────────────────────────────────────────────
+    
+    single {
+        RouteProvider(
+            directoryManager = get(),
+            handlers = get(),
+            dlnaManager = get(),
+            serverInfoBuilder = get(),
+            json = get()
+        )
+    }
 
     // ── Server Orchestrator ───────────────────────────────────
     
     single {
         AnchorHttpServer(
-            context = androidContext(),
             port = get(named("serverPort")),
-            mediaRepository = get(),
-            json = get()
+            directoryManager = get(),
+            dlnaManager = get(),
+            routeProvider = get()
         )
     }
 }

@@ -1,53 +1,44 @@
 package com.example.anchor.server.handler
 
+import com.example.anchor.core.extension.isDescendantOf
 import com.example.anchor.domain.repository.MediaRepository
+import com.example.anchor.server.PathResolver
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
 import java.io.File
-import java.net.URLDecoder
 
 /**
  * Handles /thumbnail/ route logic.
- *
- * Changes from Phase 2:
- *  - Imports [MediaRepository] from domain.repository.
- *  - Canonical-path traversal check uses the same convention as
- *    [FileHandler] (startsWith + File.separator).
- *  - Uses [Result.onSuccess] / [Result.onError] callbacks.
  */
-class ThumbnailHandler(private val mediaRepository: MediaRepository) {
+class ThumbnailHandler(
+    private val mediaRepository: MediaRepository,
+    private val pathResolver: PathResolver
+) {
 
-    suspend fun handle(call: ApplicationCall, sharedDirectories: Map<String, File>) {
-        val alias = call.parameters["alias"]
-            ?: run { call.respond(HttpStatusCode.BadRequest); return }
+    suspend fun handle(call: ApplicationCall) {
+        pathResolver.resolve(call)
+            .onSuccess { (_, relativePath, baseDir) ->
+                val file = File(baseDir, relativePath)
 
-        val relativePath = call.parameters.getAll("path")
-            ?.joinToString("/")
-            ?.let { URLDecoder.decode(it, "UTF-8") }
-            ?: run { call.respond(HttpStatusCode.BadRequest); return }
+                if (!file.exists() || file.isDirectory) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@onSuccess
+                }
 
-        val baseDir = sharedDirectories[alias]
-            ?: run { call.respond(HttpStatusCode.NotFound); return }
+                if (!file.isDescendantOf(baseDir)) {
+                    call.respond(HttpStatusCode.Forbidden)
+                    return@onSuccess
+                }
 
-        val file = File(baseDir, relativePath)
-
-        if (!file.exists() || file.isDirectory) {
-            call.respond(HttpStatusCode.NotFound)
-            return
-        }
-
-        val canonical = file.canonicalPath
-        val base = baseDir.canonicalPath
-        if (canonical != base && !canonical.startsWith(base + File.separator)) {
-            call.respond(HttpStatusCode.Forbidden)
-            return
-        }
-
-        mediaRepository.getThumbnail(file)
-            .onSuccess { bytes -> call.respondBytes(bytes, ContentType.Image.JPEG) }
-            .onError { _, _ -> call.respond(HttpStatusCode.NotFound, "No thumbnail available") }
+                mediaRepository.getThumbnail(file)
+                    .onSuccess { bytes -> call.respondBytes(bytes, ContentType.Image.JPEG) }
+                    .onError { _, _ -> call.respond(HttpStatusCode.NotFound, "No thumbnail available") }
+            }
+            .onError { message, _ ->
+                call.respond(HttpStatusCode.BadRequest, message)
+            }
     }
 }

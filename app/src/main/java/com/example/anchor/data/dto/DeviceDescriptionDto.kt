@@ -4,7 +4,7 @@ package com.example.anchor.data.dto
  * Parsed fields from a UPnP device-description XML document
  * (served at the LOCATION URL from an SSDP packet).
  *
- * [DeviceDescriptionParser] produces this; [DeviceMapper] consumes it.
+ * DeviceDescriptionParser produces this; DeviceMapper consumes it.
  */
 data class DeviceDescriptionDto(
     val friendlyName: String = "",

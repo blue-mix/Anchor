@@ -3,6 +3,10 @@ package com.example.anchor.server.dlna
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import com.example.anchor.core.config.AnchorConfig
+import com.example.anchor.core.config.AnchorConstants.SharedPreferences as Prefs
+import com.example.anchor.core.config.AnchorConstants.Ssdp.Headers
+import com.example.anchor.core.config.AnchorConstants.Ssdp.NotificationTypes
 import com.example.anchor.core.util.NetworkUtils
 import com.example.anchor.server.service.AnchorServiceState
 import com.example.anchor.server.service.LogLevel
@@ -28,23 +32,13 @@ import java.util.UUID
 /**
  * Broadcasts SSDP NOTIFY packets so UPnP control points on the LAN can
  * discover this Anchor server without sending an M-SEARCH first.
- *
- * Also responds to incoming M-SEARCH requests from control points.
- *
- * Changes from Phase 2:
- *  - Moved to server.dlna package.
- *  - Imports [AnchorServiceState] and [LogLevel] from server.service package.
- *  - Everything else is unchanged.
  */
 class SsdpAnnouncer(
     private val context: Context,
-    private val serverPort: Int = 8080
+    private val serverPort: Int = AnchorConfig.Server.DEFAULT_PORT
 ) {
     companion object {
         private const val TAG = "SsdpAnnouncer"
-        private const val SSDP_ADDRESS = "239.255.255.250"
-        private const val SSDP_PORT = 1900
-        private const val ANNOUNCE_INTERVAL = 30_000L
         private const val CACHE_MAX_AGE = 1800
 
         private val ADVERTISEMENT_TYPES = listOf(
@@ -58,12 +52,16 @@ class SsdpAnnouncer(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    val deviceUuid: String by lazy {
-        val prefs = context.getSharedPreferences("anchor_device", Context.MODE_PRIVATE)
-        prefs.getString("uuid", null) ?: UUID.randomUUID().toString().also {
-            prefs.edit().putString("uuid", it).apply()
+    // Persistent device UUID
+    private val persistentDeviceUuid: String by lazy {
+        val prefs = context.getSharedPreferences(Prefs.DEVICE_PREFS, Context.MODE_PRIVATE)
+        prefs.getString(Prefs.Keys.DEVICE_UUID, null) ?: UUID.randomUUID().toString().also {
+            prefs.edit().putString(Prefs.Keys.DEVICE_UUID, it).apply()
         }
     }
+
+    // Session-specific UUID for SSDP announcements to prevent tracking
+    private var sessionUuid: String = UUID.randomUUID().toString()
 
     private var announceJob: Job? = null
     private var listenerJob: Job? = null
@@ -77,6 +75,8 @@ class SsdpAnnouncer(
     fun start() {
         if (isRunning) return
         isRunning = true
+        // Refresh session UUID on start
+        sessionUuid = UUID.randomUUID().toString()
         AnchorServiceState.addLog("SSDP announcer starting")
         startMSearchListener()
         startPeriodicAnnouncements()
@@ -102,8 +102,8 @@ class SsdpAnnouncer(
         listenerJob = scope.launch {
             var socket: MulticastSocket? = null
             try {
-                val group = InetAddress.getByName(SSDP_ADDRESS)
-                socket = MulticastSocket(SSDP_PORT).apply {
+                val group = InetAddress.getByName(AnchorConfig.Discovery.SSDP_ADDRESS)
+                socket = MulticastSocket(AnchorConfig.Discovery.SSDP_PORT).apply {
                     reuseAddress = true
                     soTimeout = 0
                     joinAllInterfaces(group, this)
@@ -161,11 +161,11 @@ class SsdpAnnouncer(
         var socket: DatagramSocket? = null
         try {
             socket = DatagramSocket()
-            val usn = if (st == "upnp:rootdevice") "uuid:$deviceUuid::upnp:rootdevice"
-            else "uuid:$deviceUuid::$st"
+            val usn = if (st == "upnp:rootdevice") "uuid:$sessionUuid::upnp:rootdevice"
+            else "uuid:$sessionUuid::$st"
             val body = buildString {
                 appendLine("HTTP/1.1 200 OK")
-                appendLine("CACHE-CONTROL: max-age=$CACHE_MAX_AGE")
+                appendLine("${Headers.CACHE_CONTROL}: max-age=$CACHE_MAX_AGE")
                 appendLine(
                     "DATE: ${
                         SimpleDateFormat(
@@ -175,10 +175,10 @@ class SsdpAnnouncer(
                     }"
                 )
                 appendLine("EXT:")
-                appendLine("LOCATION: http://$ip:$serverPort/dlna/device.xml")
-                appendLine("SERVER: Android/${Build.VERSION.RELEASE} UPnP/1.1 Anchor/1.0")
-                appendLine("ST: $st")
-                appendLine("USN: $usn")
+                appendLine("${Headers.LOCATION}: http://$ip:$serverPort/dlna/device.xml")
+                appendLine("${Headers.SERVER}: Android/${Build.VERSION.RELEASE} UPnP/1.1 Anchor/1.0")
+                appendLine("${Headers.ST}: $st")
+                appendLine("${Headers.USN}: $usn")
                 appendLine("BOOTID.UPNP.ORG: 1")
                 appendLine("CONFIGID.UPNP.ORG: 1")
                 appendLine()
@@ -199,7 +199,7 @@ class SsdpAnnouncer(
             repeat(3) { sendAliveNotifications(); delay(1_000) }
             AnchorServiceState.addLog("SSDP: broadcasting on network", LogLevel.INFO)
             while (isActive && isRunning) {
-                delay(ANNOUNCE_INTERVAL)
+                delay(AnchorConfig.Discovery.SEARCH_INTERVAL_MS)
                 sendAliveNotifications()
             }
         }
@@ -207,36 +207,36 @@ class SsdpAnnouncer(
 
     private suspend fun sendAliveNotifications() {
         val ip = localIp ?: return
-        ADVERTISEMENT_TYPES.forEach { sendNotify(it, "ssdp:alive", ip); delay(50) }
+        ADVERTISEMENT_TYPES.forEach { sendNotify(it, NotificationTypes.ALIVE, ip); delay(50) }
     }
 
     private suspend fun sendByeByeNotifications() {
         val ip = localIp ?: return
-        ADVERTISEMENT_TYPES.forEach { sendNotify(it, "ssdp:byebye", ip); delay(50) }
+        ADVERTISEMENT_TYPES.forEach { sendNotify(it, NotificationTypes.BYEBYE, ip); delay(50) }
     }
 
     private fun sendNotify(nt: String, nts: String, ip: String) {
         var socket: DatagramSocket? = null
         try {
             socket = DatagramSocket().apply { broadcast = true }
-            val usn = if (nt == "upnp:rootdevice") "uuid:$deviceUuid::upnp:rootdevice"
-            else "uuid:$deviceUuid::$nt"
+            val usn = if (nt == "upnp:rootdevice") "uuid:$sessionUuid::upnp:rootdevice"
+            else "uuid:$sessionUuid::$nt"
             val body = buildString {
                 appendLine("NOTIFY * HTTP/1.1")
-                appendLine("HOST: $SSDP_ADDRESS:$SSDP_PORT")
-                appendLine("CACHE-CONTROL: max-age=$CACHE_MAX_AGE")
-                appendLine("LOCATION: http://$ip:$serverPort/dlna/device.xml")
-                appendLine("NT: $nt")
-                appendLine("NTS: $nts")
-                appendLine("SERVER: Android/${Build.VERSION.RELEASE} UPnP/1.1 Anchor/1.0")
-                appendLine("USN: $usn")
+                appendLine("HOST: ${AnchorConfig.Discovery.SSDP_ADDRESS}:${AnchorConfig.Discovery.SSDP_PORT}")
+                appendLine("${Headers.CACHE_CONTROL}: max-age=$CACHE_MAX_AGE")
+                appendLine("${Headers.LOCATION}: http://$ip:$serverPort/dlna/device.xml")
+                appendLine("${Headers.NT}: $nt")
+                appendLine("${Headers.NTS}: $nts")
+                appendLine("${Headers.SERVER}: Android/${Build.VERSION.RELEASE} UPnP/1.1 Anchor/1.0")
+                appendLine("${Headers.USN}: $usn")
                 appendLine("BOOTID.UPNP.ORG: 1")
                 appendLine("CONFIGID.UPNP.ORG: 1")
                 appendLine()
             }
             val data = body.toByteArray(Charsets.UTF_8)
-            val address = InetAddress.getByName(SSDP_ADDRESS)
-            socket.send(DatagramPacket(data, data.size, address, SSDP_PORT))
+            val address = InetAddress.getByName(AnchorConfig.Discovery.SSDP_ADDRESS)
+            socket.send(DatagramPacket(data, data.size, address, AnchorConfig.Discovery.SSDP_PORT))
         } catch (e: Exception) {
             Log.w(TAG, "NOTIFY send failed", e)
         } finally {
@@ -250,13 +250,13 @@ class SsdpAnnouncer(
         try {
             val ifaces = NetworkInterface.getNetworkInterfaces()
             while (ifaces.hasMoreElements()) {
-                val ni = ifaces.nextElement()
-                if (ni.isUp && !ni.isLoopback && ni.supportsMulticast()) {
-                    runCatching { socket.joinGroup(InetSocketAddress(group, SSDP_PORT), ni) }
+                val networkInterface = ifaces.nextElement()
+                if (networkInterface.isUp && !networkInterface.isLoopback && networkInterface.supportsMulticast()) {
+                    runCatching { socket.joinGroup(InetSocketAddress(group, AnchorConfig.Discovery.SSDP_PORT), networkInterface) }
                 }
             }
         } catch (e: Exception) {
-            runCatching { socket.joinGroup(InetSocketAddress(group, SSDP_PORT), null) }
+            runCatching { socket.joinGroup(InetSocketAddress(group, AnchorConfig.Discovery.SSDP_PORT), null) }
         }
     }
 }
