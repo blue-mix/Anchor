@@ -5,7 +5,7 @@ import com.example.anchor.data.dto.MediaFileDto
 import com.example.anchor.data.mapper.MediaFileMapper.toDomain
 import com.example.anchor.data.mapper.MediaFileMapper.toDto
 import com.example.anchor.data.mapper.MediaFileMapper.filesToDirectoryListing
-import com.example.anchor.data.mapper.MediaFileMapper.encodePath
+import com.example.anchor.data.mapper.encodePath
 import com.example.anchor.domain.model.MediaItem
 import com.example.anchor.domain.model.MediaType
 import com.google.common.truth.Truth.assertThat

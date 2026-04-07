@@ -11,11 +11,11 @@ import com.example.anchor.domain.usecase.media.StreamMediaUseCase
 import com.example.anchor.domain.usecase.server.AddSharedDirectoryUseCase
 import com.example.anchor.domain.usecase.server.StartServerUseCase
 import com.example.anchor.domain.usecase.server.StopServerUseCase
-import com.example.anchor.ui.discovery.DiscoveryViewModel
-import com.example.anchor.ui.browser.RemoteBrowserViewModel
-import com.example.anchor.ui.dashboard.DashboardViewModel
-import com.example.anchor.ui.onboarding.OnboardingViewModel
-import com.example.anchor.ui.player.PlayerViewModel
+import com.example.anchor.presentation.discovery.DiscoveryViewModel
+import com.example.anchor.presentation.browser.RemoteBrowserViewModel
+import com.example.anchor.presentation.dashboard.DashboardViewModel
+import com.example.anchor.presentation.onboarding.OnboardingViewModel
+import com.example.anchor.presentation.player.PlayerViewModel
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
 
