@@ -170,48 +170,12 @@ class UpnpDiscoveryManager(
                 socket = MulticastSocket(SSDP_PORT).apply {
                     reuseAddress = true
                     soTimeout = SOCKET_TIMEOUT_MS
-
-                    // Join multicast group on all available interfaces
-                    try {
-                        val networkInterfaces = NetworkInterface.getNetworkInterfaces()
-                        while (networkInterfaces.hasMoreElements()) {
-                            val ni = networkInterfaces.nextElement()
-                            if (ni.isUp && !ni.isLoopback && ni.supportsMulticast()) {
-                                try {
-                                    joinGroup(InetSocketAddress(group, SSDP_PORT), ni)
-                                    Log.d(TAG, "Joined multicast on interface: ${ni.name}")
-                                } catch (e: Exception) {
-                                    // Some interfaces may not support joining
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        // Fallback: join without specifying interface
-                        joinGroup(InetSocketAddress(group, SSDP_PORT), null)
-                    }
+                    joinMulticastGroups(this, group)
                 }
 
                 Log.d(TAG, "Multicast listener started on $SSDP_ADDRESS:$SSDP_PORT")
 
-                val buffer = ByteArray(RECEIVE_BUFFER_SIZE)
-
-                while (isActive) {
-                    try {
-                        val packet = DatagramPacket(buffer, buffer.size)
-                        socket.receive(packet)
-
-                        val message = SsdpMessage.parse(packet.data.copyOf(packet.length))
-                        if (message != null) {
-                            processMessage(message, packet.address.hostAddress ?: "")
-                        }
-                    } catch (e: SocketTimeoutException) {
-                        // Normal timeout, continue listening
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Error receiving packet", e)
-                    }
-                }
+                listenForPackets(socket)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -220,6 +184,54 @@ class UpnpDiscoveryManager(
             } finally {
                 socket?.close()
                 Log.d(TAG, "Multicast listener stopped")
+            }
+        }
+    }
+
+    /**
+     * Joins the multicast group on all available network interfaces.
+     */
+    private fun joinMulticastGroups(socket: MulticastSocket, group: InetAddress) {
+        try {
+            val networkInterfaces = NetworkInterface.getNetworkInterfaces()
+            while (networkInterfaces.hasMoreElements()) {
+                val ni = networkInterfaces.nextElement()
+                if (ni.isUp && !ni.isLoopback && ni.supportsMulticast()) {
+                    try {
+                        socket.joinGroup(InetSocketAddress(group, SSDP_PORT), ni)
+                        Log.d(TAG, "Joined multicast on interface: ${ni.name}")
+                    } catch (e: Exception) {
+                        // Some interfaces may not support joining
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Fallback: join without specifying interface
+            socket.joinGroup(InetSocketAddress(group, SSDP_PORT), null)
+        }
+    }
+
+    /**
+     * Listens for and processes incoming SSDP packets.
+     */
+    private suspend fun CoroutineScope.listenForPackets(socket: MulticastSocket) {
+        val buffer = ByteArray(RECEIVE_BUFFER_SIZE)
+
+        while (isActive) {
+            try {
+                val packet = DatagramPacket(buffer, buffer.size)
+                socket.receive(packet)
+
+                val message = SsdpMessage.parse(packet.data.copyOf(packet.length))
+                if (message != null) {
+                    processMessage(message, packet.address.hostAddress ?: "")
+                }
+            } catch (e: SocketTimeoutException) {
+                // Normal timeout, continue listening
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Error receiving packet", e)
             }
         }
     }
