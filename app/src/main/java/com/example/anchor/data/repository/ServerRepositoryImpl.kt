@@ -7,8 +7,8 @@ import com.example.anchor.core.result.resultOf
 import com.example.anchor.domain.model.ServerConfig
 import com.example.anchor.domain.model.ServerStatus
 import com.example.anchor.domain.repository.ServerRepository
-import com.example.anchor.server.service.AnchorServerService
-import com.example.anchor.server.service.AnchorServiceState
+import com.example.anchor.data.server.service.AnchorServerService
+import com.example.anchor.data.server.service.AnchorServiceState
 import kotlinx.coroutines.flow.StateFlow
 
 /**

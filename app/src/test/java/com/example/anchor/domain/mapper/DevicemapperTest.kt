@@ -5,7 +5,7 @@ import com.example.anchor.data.dto.SsdpMessageDto
 import com.example.anchor.data.dto.SsdpMessageType
 import com.example.anchor.data.mapper.DeviceMapper.classifyType
 import com.example.anchor.data.mapper.DeviceMapper.enrichWithDescription
-import com.example.anchor.data.mapper.DeviceMapper.extractIpAndPort
+import com.example.anchor.data.mapper.extractIpAndPort
 import com.example.anchor.data.mapper.DeviceMapper.refreshed
 import com.example.anchor.data.mapper.DeviceMapper.toDeviceStub
 import com.example.anchor.domain.model.Device
