@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        Cleartext traffic (HTTP) is permitted here specifically for DLNA/UPnP
+        functionality. These protocols require HTTP communication with other
+        devices on the Local Area Network (LAN) using IP addresses.
+
+        Since Android's Network Security Configuration does not support
+        whitelisting IP addresses or IP ranges, cleartext must be enabled
+        in the base-config to allow the app to function as a DLNA server/client.
+
+        SECURITY BOUNDARY:
+        To mitigate the risk of cleartext traffic, this app enforces security
+        at the application layer. The 'HttpClientDataSource' class uses strict
+        SSRF validation (e.g., 'isSiteLocalAddress') to ensure that outgoing
+        HTTP requests are only made to addresses on the local network.
+    -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
