@@ -88,13 +88,11 @@ class HttpClientDataSource(private val json: Json) {
             return false
         }
 
-        if (address.isLoopbackAddress) return false
-        
-        val hostAddress = address.hostAddress ?: return false
-        if (hostAddress.startsWith("127.") || hostAddress.startsWith("169.254.")) return false
+        // Disallow loopback and link-local addresses for UPnP discovery of other devices.
+        if (address.isLoopbackAddress || address.isLinkLocalAddress) return false
 
-        // Allow LAN ranges for UPnP discovery
-        return address.isSiteLocalAddress || !address.isLoopbackAddress
+        // Only allow site-local (LAN) addresses for UPnP discovery to prevent SSRF
+        return address.isSiteLocalAddress
     }
 
     // ── Generic GET ───────────────────────────────────────────
