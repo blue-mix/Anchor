@@ -142,14 +142,15 @@ class DeviceRepositoryImpl(
                 delay(STALE_CHECK_MS)
                 val now = System.currentTimeMillis()
                 synchronized(_devicesMap) {
-                    val toRemove = _devicesMap.filterValues { device ->
+                    val initialSize = _devicesMap.size
+                    val removed = _devicesMap.entries.removeIf { (_, device) ->
                         now - device.lastSeen > STALE_THRESHOLD_MS
-                    }.keys
-                    
-                    if (toRemove.isNotEmpty()) {
-                        toRemove.forEach { _devicesMap.remove(it) }
+                    }
+
+                    if (removed) {
+                        val removedCount = initialSize - _devicesMap.size
                         _devices.value = _devicesMap.toMap()
-                        Log.d(TAG, "Removed ${toRemove.size} stale device(s)")
+                        Log.d(TAG, "Removed $removedCount stale device(s)")
                     }
                 }
             }
